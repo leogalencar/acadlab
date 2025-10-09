@@ -278,6 +278,7 @@ export async function updateProfileAction(
   }
 
   revalidatePath("/profile");
+  revalidatePath("/dashboard");
 
   return { status: "success", message: "Perfil atualizado com sucesso." };
 }
