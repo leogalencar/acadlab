@@ -15,6 +15,7 @@ import { prisma } from "@/lib/prisma";
 export type AuthActionState = {
   status: "idle" | "success" | "error";
   message?: string;
+  statusCode?: number;
 };
 
 const emailSchema = z.object({
@@ -98,35 +99,59 @@ export async function loginAction(
 
   if (!parsed.success) {
     const message = parsed.error.issues[0]?.message ?? "Não foi possível validar os dados.";
-    return { status: "error", message };
+    return { status: "error", message, statusCode: 400 };
   }
 
+  const callbackUrl = parsed.data.callbackUrl ?? "/dashboard";
+
   try {
-    await signIn("credentials", {
+    const redirectUrl = await signIn("credentials", {
       email: parsed.data.email,
       password: parsed.data.password,
-      redirectTo: parsed.data.callbackUrl ?? "/dashboard",
+      redirectTo: callbackUrl,
+      redirect: false,
     });
+
+    if (typeof redirectUrl === "string") {
+      const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+      const url = new URL(redirectUrl, baseUrl);
+
+      if (url.searchParams.get("error") === "CredentialsSignin") {
+        return {
+          status: "error",
+          message: "E-mail ou senha inválidos.",
+          statusCode: 401,
+        };
+      }
+
+      redirect(redirectUrl);
+    }
+
+    return { status: "success", statusCode: 200 };
   } catch (error) {
     if (error instanceof AuthError) {
       if (error.type === "CredentialsSignin") {
-        return { status: "error", message: "E-mail ou senha inválidos." };
+        return {
+          status: "error",
+          message: "E-mail ou senha inválidos.",
+          statusCode: 401,
+        };
       }
 
       return {
         status: "error",
         message: "Não foi possível iniciar a sessão. Tente novamente.",
+        statusCode: 500,
       };
     }
 
     throw error;
   }
-
-  return { status: "success" };
 }
 
 export async function signOutAction() {
-  await signOut({ redirectTo: "/login" });
+  await signOut({ redirectTo: "/login", redirect: false });
+  redirect("/login");
 }
 
 export async function requestPasswordResetAction(

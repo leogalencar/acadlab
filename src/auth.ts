@@ -1,4 +1,4 @@
-import NextAuth from "next-auth";
+import NextAuth, { AuthError, type User } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import type { Adapter } from "next-auth/adapters";
@@ -12,6 +12,14 @@ const credentialsSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1, "Password is required"),
 });
+
+const isRole = (value: unknown): value is Role =>
+  typeof value === "string" &&
+  (Object.values(Role) as string[]).includes(value);
+
+const isUserStatus = (value: unknown): value is UserStatus =>
+  typeof value === "string" &&
+  (Object.values(UserStatus) as string[]).includes(value);
 
 export const {
   handlers: { GET, POST },
@@ -32,7 +40,11 @@ export const {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      authorize: async (credentials) => {
+      authorize: async (
+        credentials,
+        _request,
+      ): Promise<User | null> => {
+        void _request;
         const parsed = credentialsSchema.safeParse(credentials);
         if (!parsed.success) {
           return null;
@@ -51,16 +63,26 @@ export const {
           return null;
         }
 
-        return {
+        const authUser: User = {
           id: user.id,
           email: user.email,
           name: user.name,
           role: user.role,
           status: user.status,
         };
+
+        return authUser;
       },
     }),
   ],
+  logger: {
+    error(error) {
+      if (error instanceof AuthError && error.type === "CredentialsSignin") {
+        return;
+      }
+      console.error(error);
+    },
+  },
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
@@ -83,10 +105,10 @@ export const {
     async session({ session, token }) {
       if (session.user && token.sub) {
         session.user.id = token.sub;
-        if (token.role) {
+        if (isRole(token.role)) {
           session.user.role = token.role;
         }
-        if (token.status) {
+        if (isUserStatus(token.status)) {
           session.user.status = token.status;
         }
         if (token.name) {

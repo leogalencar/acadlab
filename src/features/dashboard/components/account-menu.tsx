@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { UserCog } from "lucide-react";
 
@@ -14,6 +14,7 @@ interface AccountMenuProps {
 export function AccountMenu({ userName }: AccountMenuProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [signingOut, startTransition] = useTransition();
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -74,15 +75,19 @@ export function AccountMenu({ userName }: AccountMenuProps) {
             >
               Meu perfil
             </Link>
-            <form action={signOutAction}>
-              <button
-                type="submit"
-                className="flex w-full rounded-md px-3 py-2 text-left text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40"
-                onClick={() => setOpen(false)}
-              >
-                Sair
-              </button>
-            </form>
+            <button
+              type="button"
+              disabled={signingOut}
+              className="flex w-full rounded-md px-3 py-2 text-left text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40 disabled:cursor-not-allowed disabled:opacity-70"
+              onClick={() => {
+                setOpen(false);
+                startTransition(async () => {
+                  await signOutAction();
+                });
+              }}
+            >
+              {signingOut ? "Saindo..." : "Sair"}
+            </button>
           </div>
         </div>
       ) : null}
