@@ -171,6 +171,7 @@ function buildBreadcrumbItems(segments: string[]) {
     scheduling: "Agenda",
     software: "Software",
     profile: "Meu perfil",
+    users: "Usuários",
   };
 
   const items: Array<{ href: string; label: string }> = [];

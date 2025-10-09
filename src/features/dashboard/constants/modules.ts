@@ -1,10 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import {
-  ClipboardList,
-  HardHat,
-  LayoutDashboard,
-  Settings,
-} from "lucide-react";
+import { ClipboardList, HardHat, LayoutDashboard, Settings, Users } from "lucide-react";
 import { Role } from "@prisma/client";
 
 export interface DashboardModule {
@@ -20,6 +15,15 @@ export interface DashboardModule {
 export const ALL_ROLES: Role[] = [Role.ADMIN, Role.TECHNICIAN, Role.PROFESSOR];
 
 export const DASHBOARD_MODULES: DashboardModule[] = [
+  {
+    id: "user-management",
+    title: "Gestão de Usuários",
+    description: "Cadastre professores, técnicos e administradores e mantenha os perfis de acesso atualizados.",
+    href: "/dashboard/users",
+    roles: [Role.ADMIN, Role.TECHNICIAN],
+    icon: Users,
+    status: "available",
+  },
   {
     id: "laboratory-resources",
     title: "Gestão de Laboratórios e Recursos",
