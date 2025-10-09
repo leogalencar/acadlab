@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { auth } from "@/auth";
-
-const publicRoutes = ["/login", "/forgot-password", "/reset-password"];
+import { publicRoutes } from "./lib/constants";
 
 export default auth((req) => {
   const { nextUrl } = req;
