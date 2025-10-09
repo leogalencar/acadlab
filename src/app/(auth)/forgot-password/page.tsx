@@ -9,7 +9,7 @@ export default async function ForgotPasswordPage() {
   const session = await auth();
 
   if (session?.user) {
-    redirect("/profile");
+    redirect("/dashboard");
   }
 
   return (

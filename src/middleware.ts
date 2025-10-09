@@ -16,7 +16,7 @@ export default auth((req) => {
   }
 
   if (isAuthenticated && isPublicRoute) {
-    return NextResponse.redirect(new URL("/profile", nextUrl.origin));
+    return NextResponse.redirect(new URL("/dashboard", nextUrl.origin));
   }
 
   return NextResponse.next();

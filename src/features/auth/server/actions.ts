@@ -105,7 +105,7 @@ export async function loginAction(
     await signIn("credentials", {
       email: parsed.data.email,
       password: parsed.data.password,
-      redirectTo: parsed.data.callbackUrl ?? "/profile",
+      redirectTo: parsed.data.callbackUrl ?? "/dashboard",
     });
   } catch (error) {
     if (error instanceof AuthError) {
