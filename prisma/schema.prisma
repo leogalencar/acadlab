@@ -1,0 +1,215 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PROFESSOR
+  TECHNICIAN
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum LaboratoryStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+enum RecurrenceFrequency {
+  WEEKLY
+}
+
+enum SoftwareRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum NotificationType {
+  RESERVATION_CONFIRMED
+  RESERVATION_CANCELLED
+  SOFTWARE_REQUEST_UPDATED
+}
+
+model User {
+  id                       String                  @id @default(cuid())
+  name                     String
+  email                    String                  @unique
+  passwordHash             String
+  role                     Role                    @default(PROFESSOR)
+  status                   UserStatus              @default(ACTIVE)
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+  reservations             Reservation[]
+  softwareRequests         SoftwareRequest[]       @relation("RequesterSoftwareRequests")
+  reviewedSoftwareRequests SoftwareRequest[]       @relation("ReviewerSoftwareRequests")
+  notifications            Notification[]
+  passwordResetTokens      PasswordResetToken[]
+  managedLaboratories      Laboratory[]            @relation("LaboratoryManagers")
+  installedSoftware        LaboratorySoftware[]    @relation("InstalledByUser")
+  createdRecurrences       ReservationRecurrence[] @relation("RecurrenceCreator")
+  sessions                 Session[]
+}
+
+model Laboratory {
+  id                   String                  @id @default(cuid())
+  name                 String
+  capacity             Int
+  status               LaboratoryStatus        @default(ACTIVE)
+  description          String?                 @db.Text
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  reservations         Reservation[]
+  softwareAssociations LaboratorySoftware[]
+  softwareRequests     SoftwareRequest[]
+  managers             User[]                  @relation("LaboratoryManagers")
+  recurrences          ReservationRecurrence[]
+
+  @@unique([name])
+}
+
+model Software {
+  id               String               @id @default(cuid())
+  name             String
+  version          String
+  supplier         String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  laboratories     LaboratorySoftware[]
+  softwareRequests SoftwareRequest[]
+
+  @@unique([name, version])
+}
+
+model LaboratorySoftware {
+  laboratoryId  String
+  softwareId    String
+  installedById String?
+  installedAt   DateTime @default(now())
+
+  laboratory  Laboratory @relation(fields: [laboratoryId], references: [id], onDelete: Cascade)
+  software    Software   @relation(fields: [softwareId], references: [id], onDelete: Cascade)
+  installedBy User?      @relation("InstalledByUser", fields: [installedById], references: [id])
+
+  @@id([laboratoryId, softwareId])
+}
+
+model Reservation {
+  id                 String            @id @default(cuid())
+  laboratoryId       String
+  createdById        String
+  startTime          DateTime
+  endTime            DateTime
+  status             ReservationStatus @default(PENDING)
+  cancellationReason String?           @db.Text
+  cancelledAt        DateTime?
+  recurrenceId       String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  laboratory Laboratory             @relation(fields: [laboratoryId], references: [id], onDelete: Cascade)
+  createdBy  User                   @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  recurrence ReservationRecurrence? @relation(fields: [recurrenceId], references: [id], onDelete: Cascade)
+
+  @@index([laboratoryId, startTime, endTime])
+}
+
+model ReservationRecurrence {
+  id           String              @id @default(cuid())
+  laboratoryId String
+  createdById  String
+  frequency    RecurrenceFrequency
+  interval     Int                 @default(1)
+  weekDay      Int?
+  startDate    DateTime
+  endDate      DateTime?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  laboratory   Laboratory    @relation(fields: [laboratoryId], references: [id], onDelete: Cascade)
+  createdBy    User          @relation("RecurrenceCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  reservations Reservation[]
+}
+
+model SoftwareRequest {
+  id              String                @id @default(cuid())
+  requesterId     String
+  laboratoryId    String
+  softwareId      String?
+  softwareName    String
+  softwareVersion String?
+  justification   String?               @db.Text
+  status          SoftwareRequestStatus @default(PENDING)
+  reviewerId      String?
+  reviewedAt      DateTime?
+  responseNotes   String?               @db.Text
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  requester  User       @relation("RequesterSoftwareRequests", fields: [requesterId], references: [id], onDelete: Cascade)
+  laboratory Laboratory @relation(fields: [laboratoryId], references: [id], onDelete: Cascade)
+  reviewer   User?      @relation("ReviewerSoftwareRequests", fields: [reviewerId], references: [id])
+  software   Software?  @relation(fields: [softwareId], references: [id])
+
+  @@index([status])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  payload   Json
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
