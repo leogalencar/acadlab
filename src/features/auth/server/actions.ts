@@ -166,6 +166,7 @@ export async function requestPasswordResetAction(
   const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
   const resetLink = `${baseUrl}/reset-password/${rawToken}`;
 
+  // TODO: send email with reset link instead of logging it on console
   console.info("[auth] password reset link", resetLink);
 
   return {
