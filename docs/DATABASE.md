@@ -1,6 +1,6 @@
 # Database Setup
 
-This project uses Prisma ORM with MySQL for data persistence.
+This project uses Prisma ORM with MySQL for data persistence and NextAuth for authentication.
 
 ## Prerequisites
 
@@ -9,7 +9,7 @@ This project uses Prisma ORM with MySQL for data persistence.
 
 ## Setup Instructions
 
-### 1. Configure Database Connection
+### 1. Configure Environment Variables
 
 Create a `.env` file in the root directory (copy from `.env.example`):
 
@@ -17,10 +17,21 @@ Create a `.env` file in the root directory (copy from `.env.example`):
 cp .env.example .env
 ```
 
-Update the `DATABASE_URL` in your `.env` file with your MySQL credentials:
+Update the `.env` file with your configuration:
 
-```
+```env
+# Database connection
 DATABASE_URL="mysql://user:password@localhost:3306/acadlab"
+
+# NextAuth configuration
+NEXTAUTH_SECRET="your-secret-key-here"
+NEXTAUTH_URL="http://localhost:3000"
+```
+
+To generate a secure `NEXTAUTH_SECRET`, run:
+
+```bash
+openssl rand -base64 32
 ```
 
 Replace:
@@ -28,6 +39,7 @@ Replace:
 - `password` with your MySQL password
 - `localhost:3306` with your MySQL host and port if different
 - `acadlab` with your desired database name
+- `NEXTAUTH_SECRET` with your generated secret key
 
 ### 2. Create the Database
 
@@ -74,19 +86,61 @@ This will create three test users:
 
 ## Database Schema
 
-### User Table
+### Users Table
 
 The `users` table stores authentication and user information:
 
-| Field     | Type     | Description                    |
-|-----------|----------|--------------------------------|
-| id        | String   | Unique identifier (CUID)       |
-| email     | String   | User email (unique)            |
-| name      | String   | User's full name               |
-| password  | String   | Hashed password (bcrypt)       |
-| role      | Enum     | PROFESSOR, TECHNICIAN, or ADMINISTRATOR |
-| createdAt | DateTime | Account creation timestamp     |
-| updatedAt | DateTime | Last update timestamp          |
+| Field         | Type     | Description                                    |
+|---------------|----------|------------------------------------------------|
+| id            | String   | Unique identifier (CUID)                       |
+| email         | String   | User email (unique)                            |
+| name          | String   | User's full name                               |
+| password      | String   | Hashed password (bcrypt)                       |
+| role          | Enum     | PROFESSOR, TECHNICIAN, or ADMINISTRATOR        |
+| emailVerified | DateTime | Email verification timestamp (NextAuth)        |
+| image         | String   | User profile image URL (optional)              |
+| createdAt     | DateTime | Account creation timestamp                     |
+| updatedAt     | DateTime | Last update timestamp                          |
+
+### Accounts Table
+
+The `accounts` table stores OAuth provider information (NextAuth):
+
+| Field             | Type     | Description                        |
+|-------------------|----------|------------------------------------|
+| userId            | String   | Reference to user                  |
+| type              | String   | Account type (oauth, credentials)  |
+| provider          | String   | Provider name                      |
+| providerAccountId | String   | Provider account ID                |
+| refresh_token     | Text     | OAuth refresh token (optional)     |
+| access_token      | Text     | OAuth access token (optional)      |
+| expires_at        | Int      | Token expiration timestamp         |
+| token_type        | String   | Token type                         |
+| scope             | String   | OAuth scope                        |
+| id_token          | Text     | OAuth ID token (optional)          |
+| session_state     | String   | Session state (optional)           |
+
+### Sessions Table
+
+The `sessions` table stores user sessions (NextAuth):
+
+| Field        | Type     | Description                |
+|--------------|----------|----------------------------|
+| sessionToken | String   | Unique session token       |
+| userId       | String   | Reference to user          |
+| expires      | DateTime | Session expiration time    |
+| createdAt    | DateTime | Session creation timestamp |
+| updatedAt    | DateTime | Last update timestamp      |
+
+### Verification Tokens Table
+
+The `verification_tokens` table stores email verification tokens (NextAuth):
+
+| Field      | Type     | Description                |
+|------------|----------|----------------------------|
+| identifier | String   | User identifier (email)    |
+| token      | String   | Verification token         |
+| expires    | DateTime | Token expiration time      |
 
 ## Troubleshooting
 

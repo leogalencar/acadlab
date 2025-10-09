@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { LoginForm } from "@/features/auth";
 import { LoginCredentials } from "@/features/auth";
@@ -15,24 +16,20 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(credentials),
+      const result = await signIn("credentials", {
+        email: credentials.email,
+        password: credentials.password,
+        redirect: false,
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error || "Login failed");
+      if (result?.error) {
+        setError("Invalid email or password");
         return;
       }
 
-      // Store user data (in a real app, you'd use a state management solution or session)
-      console.log("Login successful:", data.user);
-      
-      // Redirect to home page or dashboard
+      // Redirect to home page on successful login
       router.push("/");
+      router.refresh();
     } catch (err) {
       console.error("Login error:", err);
       setError("An error occurred during login");

@@ -1,24 +1,14 @@
 "use client";
 
 import { useCallback } from "react";
+import { signOut } from "next-auth/react";
 
 /**
- * Hook for handling logout functionality
- * This is a placeholder implementation that will be replaced
- * with actual logout logic when authentication backend is implemented
+ * Hook for handling logout functionality using NextAuth
  */
 export function useLogout() {
-  const logout = useCallback(() => {
-    // TODO: Implement actual logout logic
-    // - Clear authentication tokens/session
-    // - Clear user data from state
-    // - Redirect to login page
-    console.log("Logout functionality - to be implemented with backend");
-    
-    // For now, just redirect to login
-    if (typeof window !== "undefined") {
-      window.location.href = "/login";
-    }
+  const logout = useCallback(async () => {
+    await signOut({ callbackUrl: "/login" });
   }, []);
 
   return { logout };
