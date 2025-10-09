@@ -21,7 +21,7 @@ export const {
 } = NextAuth({
   adapter: PrismaAdapter(prisma) as Adapter,
   session: {
-    strategy: "database",
+    strategy: "jwt",
   },
   pages: {
     signIn: "/login",
@@ -62,13 +62,39 @@ export const {
     }),
   ],
   callbacks: {
-    async session({ session, user }) {
-      if (session.user && user) {
-        session.user.id = user.id;
-        session.user.role = user.role as Role;
-        session.user.status = user.status as UserStatus;
-        session.user.name = user.name;
-        session.user.email = user.email;
+    async jwt({ token, user }) {
+      if (user) {
+        const { role, status } = user as {
+          role?: Role;
+          status?: UserStatus;
+        };
+
+        if (role) {
+          token.role = role;
+        }
+
+        if (status) {
+          token.status = status;
+        }
+      }
+
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user && token.sub) {
+        session.user.id = token.sub;
+        if (token.role) {
+          session.user.role = token.role;
+        }
+        if (token.status) {
+          session.user.status = token.status;
+        }
+        if (token.name) {
+          session.user.name = token.name;
+        }
+        if (token.email) {
+          session.user.email = token.email;
+        }
       }
 
       return session;
