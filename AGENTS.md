@@ -11,7 +11,7 @@
 - Framework: Next.js 15.5.4 with Turbopack
 - Styling: Tailwind CSS v4, PostCSS
 - UI Components: shadcn/ui (New York style)
-- Package Manager: npm (Node.js v20+, npm v10+)
+- Package Manager: pnpm (Node.js v20+, pnpm v9+)
 
 ## Project Structure
 
@@ -47,19 +47,19 @@
 
 ## Build & Development Commands
 
-### IMPORTANT: Always run `npm install` before any other command
+### IMPORTANT: Always run `pnpm install` before any other command
 
 **Install Dependencies** (REQUIRED FIRST STEP):
 ```bash
-npm install
+pnpm install
 ```
 - Takes ~2 minutes
 - Must be run after cloning or when package.json changes
-- Creates `package-lock.json` if not present
+- Creates `pnpm-lock.yaml` if not present
 
 ### Development Server (WORKS):
 ```bash
-npm run dev
+pnpm dev
 # Equivalent to: next dev --turbopack
 ```
 - Starts server at `http://localhost:3000`
@@ -70,7 +70,7 @@ npm run dev
 
 ### Linting (WORKS):
 ```bash
-npm run lint
+pnpm lint
 # Equivalent to: eslint
 ```
 - Runs ESLint on entire codebase
@@ -80,7 +80,7 @@ npm run lint
 
 ### Production Build (NETWORK RESTRICTED):
 ```bash
-npm run build
+pnpm build
 # Equivalent to: next build --turbopack
 ```
 - **⚠️ KNOWN ISSUE**: Build fails in network-restricted environments
@@ -88,14 +88,14 @@ npm run build
 - Failure occurs during font optimization in `src/app/layout.tsx`
 - This is an ENVIRONMENT limitation, not a code issue
 - The build works in environments with internet access
-- **Alternative**: Use `npm run dev` for development/testing instead
+- **Alternative**: Use `pnpm dev` for development/testing instead
 
 ### Start Production Server:
 ```bash
-npm start
+pnpm start
 # Equivalent to: next start
 ```
-- Requires successful `npm run build` first
+- Requires successful `pnpm build` first
 - Serves production build on port 3000
 
 ## Architecture Guidelines
@@ -135,11 +135,11 @@ npm start
 ## Common Workflows
 
 ### Making Code Changes:
-1. **Always** run `npm install` first if starting fresh
+1. **Always** run `pnpm install` first if starting fresh
 2. Make your changes to files in `src/`
-3. Run `npm run lint` to check for linting errors
-4. Run `npm run dev` to test locally
-5. For production validation, try `npm run build` (may fail due to fonts)
+3. Run `pnpm lint` to check for linting errors
+4. Run `pnpm dev` to test locally
+5. For production validation, try `pnpm build` (may fail due to fonts)
 
 ### Adding New Features:
 1. Create a new folder in `./src/features/` for your feature
@@ -178,24 +178,24 @@ npx shadcn@latest add <component-name>
 
 **No Test Framework Currently Configured**
 - No Jest, Vitest, or other test runners
-- Validate changes manually with `npm run dev`
+- Validate changes manually with `pnpm dev`
 - Check for type errors with TypeScript compilation (happens during dev/build)
 
 **Validation Checklist:**
-1. Run `npm run lint` - should pass with 0 errors
-2. Run `npm run dev` - should start without errors
+1. Run `pnpm lint` - should pass with 0 errors
+2. Run `pnpm dev` - should start without errors
 3. Open browser to http://localhost:3000 - page should load
 4. Check browser console for runtime errors
 
 ## Known Issues & Workarounds
 
 ### Issue 1: Build Fails with Font Error
-**Problem**: `npm run build` fails with "Failed to fetch Geist from Google Fonts"
+**Problem**: `pnpm build` fails with "Failed to fetch Geist from Google Fonts"
 
 **Root Cause**: Network restrictions prevent accessing fonts.googleapis.com
 
 **Workaround Options**:
-1. Use `npm run dev` for development and testing (recommended)
+1. Use `pnpm dev` for development and testing (recommended)
 2. Remove Google Fonts and use system fonts (if acceptable for task)
 3. Run build in environment with internet access
 
@@ -230,8 +230,8 @@ npx shadcn@latest add <component-name>
 ## Environment Requirements
 
 - **Node.js**: v20+ (tested with v20.19.5)
-- **npm**: v10+ (tested with v10.8.2)
-- **Package Manager**: Use `npm` (not pnpm, even though pnpm-lock.yaml exists)
+- **pnpm**: v9+ (tested with v9.15.3)
+- **Package Manager**: Use `pnpm` (pnpm-lock.yaml is the lock file)
 
 ## CI/CD & GitHub Actions
 
@@ -248,9 +248,9 @@ npx shadcn@latest add <component-name>
 
 3. **Code Complexity**: This is a 2-person team. Keep code simple, maintainable, and well-documented. Avoid over-engineering.
 
-4. **Build Limitations**: If you need to validate a production build and `npm run build` fails with font errors, this is expected in network-restricted environments. Use `npm run dev` instead.
+4. **Build Limitations**: If you need to validate a production build and `pnpm build` fails with font errors, this is expected in network-restricted environments. Use `pnpm dev` instead.
 
-5. **Always Install First**: Never skip `npm install` - it's required for all operations.
+5. **Always Install First**: Never skip `pnpm install` - it's required for all operations.
 
 6. **Minimal Changes**: This is a small, clean codebase. Make surgical changes only to files relevant to your task.
 
