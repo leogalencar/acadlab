@@ -1,39 +1,119 @@
 "use client";
 
-import { useActionState, useEffect, useState, useTransition } from "react";
+import { useActionState, useEffect, useMemo, useState, useTransition } from "react";
+import { ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { idleActionState, type ActionState } from "@/features/shared/types";
+import { PAGE_SIZE_OPTIONS } from "@/features/shared/table";
 import {
   createSoftwareAction,
   deleteSoftwareAction,
   updateSoftwareAction,
 } from "@/features/software-management/server/actions";
-import type { SerializableSoftware } from "@/features/software-management/types";
+import type {
+  SerializableSoftware,
+  SoftwarePaginationState,
+  SoftwareSortField,
+  SoftwareSortingState,
+} from "@/features/software-management/types";
 
 interface SoftwareManagementClientProps {
   software: SerializableSoftware[];
+  sorting: SoftwareSortingState;
+  pagination: SoftwarePaginationState;
 }
 
-export function SoftwareManagementClient({ software }: SoftwareManagementClientProps) {
+export function SoftwareManagementClient({ software, sorting, pagination }: SoftwareManagementClientProps) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"create" | "edit">("create");
-  const [selected, setSelected] = useState<SerializableSoftware | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [dialogKey, setDialogKey] = useState(0);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const selected = useMemo(() => {
+    if (!selectedId) {
+      return null;
+    }
+
+    return software.find((item) => item.id === selectedId) ?? null;
+  }, [selectedId, software]);
+
+  useEffect(() => {
+    if (!selectedId) {
+      return;
+    }
+
+    const exists = software.some((item) => item.id === selectedId);
+    if (!exists) {
+      setOpen(false);
+      setMode("create");
+      setSelectedId(null);
+    }
+  }, [selectedId, software]);
 
   const handleCreate = () => {
     setMode("create");
-    setSelected(null);
+    setSelectedId(null);
     setOpen(true);
   };
 
-  const handleRowClick = (item: SerializableSoftware) => {
+  const handleRowClick = (softwareId: string) => {
     setMode("edit");
-    setSelected(item);
+    setSelectedId(softwareId);
     setOpen(true);
   };
+
+  const handleDialogOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (!nextOpen) {
+      setMode("create");
+      setSelectedId(null);
+      setDialogKey((key) => key + 1);
+    }
+  };
+
+  const updateQueryParams = (updates: Record<string, string | null>) => {
+    const params = new URLSearchParams(searchParams.toString());
+
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value === null) {
+        params.delete(key);
+      } else {
+        params.set(key, value);
+      }
+    });
+
+    const query = params.toString();
+    router.push(query ? `?${query}` : "");
+  };
+
+  const handleSortChange = (field: SoftwareSortField) => {
+    const isSameField = sorting.sortBy === field;
+    const nextOrder = isSameField && sorting.sortOrder === "asc" ? "desc" : "asc";
+
+    updateQueryParams({ sortBy: field, sortOrder: nextOrder, page: null });
+  };
+
+  const handlePageChange = (page: number) => {
+    updateQueryParams({ page: String(page) });
+  };
+
+  const handlePerPageChange = (nextPerPage: number) => {
+    updateQueryParams({ perPage: String(nextPerPage), page: "1" });
+  };
+
+  const { page, perPage, total } = pagination;
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  const hasResults = total > 0;
+  const rangeStart = hasResults ? (page - 1) * perPage + 1 : 0;
+  const rangeEnd = hasResults ? Math.min(total, page * perPage) : 0;
 
   return (
     <div className="space-y-6">
@@ -48,13 +128,13 @@ export function SoftwareManagementClient({ software }: SoftwareManagementClientP
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border/70 bg-card">
-        <table className="w-full min-w-[600px] border-collapse text-sm">
+        <table className="w-full min-w-[640px] border-collapse text-sm">
           <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
-              <th className="p-3 text-left font-medium">Software</th>
-              <th className="p-3 text-left font-medium">Versão</th>
+              <SortableHeader label="Software" field="name" sorting={sorting} onSort={handleSortChange} />
+              <SortableHeader label="Versão" field="version" sorting={sorting} onSort={handleSortChange} />
               <th className="p-3 text-left font-medium">Fornecedor</th>
-              <th className="p-3 text-left font-medium">Atualizado em</th>
+              <SortableHeader label="Atualizado em" field="updatedAt" sorting={sorting} onSort={handleSortChange} />
             </tr>
           </thead>
           <tbody>
@@ -62,7 +142,7 @@ export function SoftwareManagementClient({ software }: SoftwareManagementClientP
               software.map((item) => (
                 <tr
                   key={item.id}
-                  onClick={() => handleRowClick(item)}
+                  onClick={() => handleRowClick(item.id)}
                   className="cursor-pointer transition-colors hover:bg-muted/60"
                 >
                   <td className="p-4 font-medium text-foreground">{item.name}</td>
@@ -76,7 +156,7 @@ export function SoftwareManagementClient({ software }: SoftwareManagementClientP
             ) : (
               <tr>
                 <td colSpan={4} className="p-8 text-center text-sm text-muted-foreground">
-                  Nenhum software cadastrado. Utilize o botão acima para registrar um novo item.
+                  Nenhum software encontrado. Utilize o botão acima para registrar um novo item.
                 </td>
               </tr>
             )}
@@ -84,8 +164,100 @@ export function SoftwareManagementClient({ software }: SoftwareManagementClientP
         </table>
       </div>
 
-      <SoftwareDialog mode={mode} open={open} onOpenChange={setOpen} software={selected} />
+      <div className="flex flex-col gap-4 rounded-xl border border-border/60 bg-card p-4 text-sm md:flex-row md:items-center md:justify-between">
+        <p className="text-muted-foreground">
+          {hasResults
+            ? `Mostrando ${rangeStart}-${rangeEnd} de ${total} software${total === 1 ? "" : "s"}`
+            : "Nenhum software encontrado."}
+        </p>
+        <div className="flex flex-wrap items-center gap-4">
+          <label className="flex items-center gap-2 text-muted-foreground">
+            Linhas por página
+            <select
+              className="h-9 rounded-md border border-input bg-background px-2 text-sm shadow-sm"
+              value={perPage}
+              onChange={(event) => handlePerPageChange(Number(event.target.value))}
+            >
+              {PAGE_SIZE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+              {PAGE_SIZE_OPTIONS.includes(perPage) ? null : (
+                <option value={perPage}>{perPage}</option>
+              )}
+            </select>
+          </label>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9"
+              disabled={page <= 1}
+              onClick={() => handlePageChange(page - 1)}
+            >
+              <ChevronLeft className="mr-1 h-4 w-4" />
+              Anterior
+            </Button>
+            <span className="text-muted-foreground">
+              Página {page} de {totalPages}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9"
+              disabled={page >= totalPages}
+              onClick={() => handlePageChange(page + 1)}
+            >
+              Próxima
+              <ChevronRight className="ml-1 h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <SoftwareDialog key={dialogKey} mode={mode} open={open} onOpenChange={handleDialogOpenChange} software={selected} />
     </div>
+  );
+}
+
+interface SortableHeaderProps {
+  label: string;
+  field: SoftwareSortField;
+  sorting: SoftwareSortingState;
+  onSort: (field: SoftwareSortField) => void;
+}
+
+function SortableHeader({ label, field, sorting, onSort }: SortableHeaderProps) {
+  const isActive = sorting.sortBy === field;
+  const iconRotation = isActive && sorting.sortOrder === "desc" ? "rotate-180" : "";
+
+  return (
+    <th
+      className="p-3 text-left"
+      scope="col"
+      aria-sort={isActive ? (sorting.sortOrder === "asc" ? "ascending" : "descending") : "none"}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(field)}
+        className={cn(
+          "flex items-center gap-1 text-xs font-medium uppercase tracking-wide",
+          isActive ? "text-foreground" : "text-muted-foreground",
+        )}
+      >
+        {label}
+        <ChevronUp
+          className={cn(
+            "h-4 w-4 transition-transform",
+            iconRotation,
+            isActive ? "text-foreground" : "text-muted-foreground/60",
+          )}
+        />
+      </button>
+    </th>
   );
 }
 
@@ -97,6 +269,7 @@ interface SoftwareDialogProps {
 }
 
 function SoftwareDialog({ mode, open, onOpenChange, software }: SoftwareDialogProps) {
+  const router = useRouter();
   const [deleteFeedback, setDeleteFeedback] = useState<ActionState | null>(null);
   const [isDeleting, startDeleting] = useTransition();
 
@@ -126,6 +299,7 @@ function SoftwareDialog({ mode, open, onOpenChange, software }: SoftwareDialogPr
         setDeleteFeedback(result);
         return;
       }
+      router.refresh();
       handleClose(false);
     });
   };
@@ -142,7 +316,14 @@ function SoftwareDialog({ mode, open, onOpenChange, software }: SoftwareDialogPr
           </DialogDescription>
         </DialogHeader>
 
-        <SoftwareForm mode={mode} software={software} onCompleted={() => handleClose(false)} />
+        <SoftwareForm
+          mode={mode}
+          software={software}
+          onCompleted={() => {
+            router.refresh();
+            handleClose(false);
+          }}
+        />
 
         {mode === "edit" && software ? (
           <div className="space-y-2 rounded-lg border border-border/70 bg-muted/40 p-4">

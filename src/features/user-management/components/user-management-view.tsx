@@ -1,31 +1,28 @@
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useTransition,
-} from "react";
+import { useActionState, useEffect, useMemo, useState, useTransition } from "react";
 import { Role, UserStatus } from "@prisma/client";
-import { useFormState } from "react-dom";
+import { ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
+import { PAGE_SIZE_OPTIONS } from "@/features/shared/table";
 import {
   createUserAction,
   deleteUserAction,
   type UserManagementActionState,
   updateUserAction,
 } from "@/features/user-management/server/actions";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import type {
+  SerializableUser,
+  UserPaginationState,
+  UserSortField,
+  UserSortingState,
+} from "@/features/user-management/types";
 
 const ROLE_LABELS: Record<Role, string> = {
   [Role.ADMIN]: "Administrador",
@@ -45,385 +42,537 @@ const STATUS_BADGE_STYLES: Record<UserStatus, string> = {
 
 const initialActionState: UserManagementActionState = { status: "idle" };
 
-export interface SerializableUser {
-  id: string;
-  name: string;
-  email: string;
-  role: Role;
-  status: UserStatus;
-  createdAt: string;
-  updatedAt: string;
-}
-
 interface UserManagementViewProps {
   users: SerializableUser[];
   actorRole: Role;
+  sorting: UserSortingState;
+  pagination: UserPaginationState;
+  availableRoles: Role[];
 }
 
-export function UserManagementView({ users, actorRole }: UserManagementViewProps) {
-  const canAssignTechnician = actorRole === Role.ADMIN;
-  const creatableRoles = useMemo(() => getAssignableRoles(actorRole), [actorRole]);
+export function UserManagementView({ users, actorRole, sorting, pagination, availableRoles }: UserManagementViewProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [dialogMode, setDialogMode] = useState<"create" | "edit" | "view">("create");
+  const [isDialogOpen, setDialogOpen] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [dialogKey, setDialogKey] = useState(0);
+
+  const selectedUser = useMemo(() => {
+    if (!selectedUserId) {
+      return null;
+    }
+
+    return users.find((user) => user.id === selectedUserId) ?? null;
+  }, [selectedUserId, users]);
+
+  useEffect(() => {
+    if (!selectedUserId) {
+      return;
+    }
+
+    const exists = users.some((user) => user.id === selectedUserId);
+    if (!exists) {
+      setDialogOpen(false);
+      setDialogMode("create");
+      setSelectedUserId(null);
+    }
+  }, [selectedUserId, users]);
+
+  const handleCreate = () => {
+    setDialogMode("create");
+    setSelectedUserId(null);
+    setDialogOpen(true);
+  };
+
+  const handleRowClick = (user: SerializableUser) => {
+    const canEditUser = canManageRole(actorRole, user.role);
+    setDialogMode(canEditUser ? "edit" : "view");
+    setSelectedUserId(user.id);
+    setDialogOpen(true);
+  };
+
+  const handleDialogOpenChange = (nextOpen: boolean) => {
+    setDialogOpen(nextOpen);
+    if (!nextOpen) {
+      setDialogMode("create");
+      setSelectedUserId(null);
+      setDialogKey((key) => key + 1);
+    }
+  };
+
+  const updateQueryParams = (updates: Record<string, string | null>) => {
+    const params = new URLSearchParams(searchParams.toString());
+
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value === null) {
+        params.delete(key);
+      } else {
+        params.set(key, value);
+      }
+    });
+
+    const query = params.toString();
+    router.push(query ? `?${query}` : "");
+  };
+
+  const handleSortChange = (field: UserSortField) => {
+    const isSameField = sorting.sortBy === field;
+    const nextOrder = isSameField && sorting.sortOrder === "asc" ? "desc" : "asc";
+
+    updateQueryParams({ sortBy: field, sortOrder: nextOrder, page: null });
+  };
+
+  const handlePageChange = (page: number) => {
+    updateQueryParams({ page: String(page) });
+  };
+
+  const handlePerPageChange = (perPage: number) => {
+    updateQueryParams({ perPage: String(perPage), page: "1" });
+  };
+
+  const { page, perPage, total } = pagination;
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  const hasResults = total > 0;
+  const rangeStart = hasResults ? (page - 1) * perPage + 1 : 0;
+  const rangeEnd = hasResults ? Math.min(total, page * perPage) : 0;
 
   return (
-    <div className="space-y-8">
-      <Card>
-        <CardHeader>
-          <CardTitle>Cadastrar novo usuário</CardTitle>
-          <CardDescription>
-            Defina as credenciais iniciais e o perfil de acesso. Compartilhe a senha provisória com o usuário com segurança.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <UserCreationForm availableRoles={creatableRoles} />
-        </CardContent>
-      </Card>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold leading-6 text-foreground">Usuários cadastrados</h2>
+          <p className="text-sm text-muted-foreground">
+            Gerencie perfis de acesso conforme suas permissões e mantenha as informações sempre atualizadas.
+          </p>
+        </div>
+        {availableRoles.length > 0 ? (
+          <Button onClick={handleCreate}>Novo usuário</Button>
+        ) : null}
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Usuários cadastrados</CardTitle>
-          <CardDescription>
-            Gerencie contas existentes de acordo com o seu perfil. {canAssignTechnician ? "Administradores podem gerenciar todos os perfis, incluindo técnicos e outros administradores." : "Técnicos podem gerenciar apenas contas de professores."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <UsersList users={users} actorRole={actorRole} />
-        </CardContent>
-      </Card>
+      <div className="overflow-hidden rounded-xl border border-border/70 bg-card">
+        <table className="w-full min-w-[720px] border-collapse text-sm">
+          <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
+              <SortableHeader label="Nome" field="name" sorting={sorting} onSort={handleSortChange} />
+              <SortableHeader label="E-mail" field="email" sorting={sorting} onSort={handleSortChange} />
+              <SortableHeader label="Perfil" field="role" sorting={sorting} onSort={handleSortChange} />
+              <SortableHeader label="Status" field="status" sorting={sorting} onSort={handleSortChange} />
+              <SortableHeader label="Atualizado em" field="updatedAt" sorting={sorting} onSort={handleSortChange} />
+            </tr>
+          </thead>
+          <tbody>
+            {users.length > 0 ? (
+              users.map((user) => (
+                <tr
+                  key={user.id}
+                  onClick={() => handleRowClick(user)}
+                  className={cn(
+                    "transition-colors",
+                    canManageRole(actorRole, user.role) && "cursor-pointer hover:bg-muted/60",
+                  )}
+                >
+                  <td className="p-4 font-medium text-foreground">{user.name}</td>
+                  <td className="p-4 text-muted-foreground">{user.email}</td>
+                  <td className="p-4 text-muted-foreground">{ROLE_LABELS[user.role]}</td>
+                  <td className="p-4">
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium ${STATUS_BADGE_STYLES[user.status]}`}
+                    >
+                      {STATUS_LABELS[user.status]}
+                    </span>
+                  </td>
+                  <td className="p-4 text-xs text-muted-foreground">
+                    {new Date(user.updatedAt).toLocaleDateString()}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={5} className="p-8 text-center text-sm text-muted-foreground">
+                  Nenhum usuário encontrado.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex flex-col gap-4 rounded-xl border border-border/60 bg-card p-4 text-sm md:flex-row md:items-center md:justify-between">
+        <p className="text-muted-foreground">
+          {hasResults
+            ? `Mostrando ${rangeStart}-${rangeEnd} de ${total} usuário${total === 1 ? "" : "s"}`
+            : "Nenhum usuário encontrado."}
+        </p>
+        <div className="flex flex-wrap items-center gap-4">
+          <label className="flex items-center gap-2 text-muted-foreground">
+            Linhas por página
+            <select
+              className="h-9 rounded-md border border-input bg-background px-2 text-sm shadow-sm"
+              value={perPage}
+              onChange={(event) => handlePerPageChange(Number(event.target.value))}
+            >
+              {PAGE_SIZE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+              {PAGE_SIZE_OPTIONS.includes(perPage) ? null : (
+                <option value={perPage}>{perPage}</option>
+              )}
+            </select>
+          </label>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9"
+              disabled={page <= 1}
+              onClick={() => handlePageChange(page - 1)}
+            >
+              <ChevronLeft className="mr-1 h-4 w-4" />
+              Anterior
+            </Button>
+            <span className="text-muted-foreground">
+              Página {page} de {totalPages}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9"
+              disabled={page >= totalPages}
+              onClick={() => handlePageChange(page + 1)}
+            >
+              Próxima
+              <ChevronRight className="ml-1 h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <UserDialog
+        key={dialogKey}
+        mode={dialogMode}
+        open={isDialogOpen}
+        onOpenChange={handleDialogOpenChange}
+        user={selectedUser}
+        actorRole={actorRole}
+      />
     </div>
   );
 }
 
-interface UserCreationFormProps {
-  availableRoles: Role[];
+interface SortableHeaderProps {
+  label: string;
+  field: UserSortField;
+  sorting: UserSortingState;
+  onSort: (field: UserSortField) => void;
 }
 
-function UserCreationForm({ availableRoles }: UserCreationFormProps) {
-  const formRef = useRef<HTMLFormElement>(null);
-  const [state, formAction] = useFormState(createUserAction, initialActionState);
-
-  useEffect(() => {
-    if (state.status === "success") {
-      formRef.current?.reset();
-    }
-  }, [state.status]);
-
-  if (availableRoles.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        Seu perfil de acesso não permite cadastrar novos usuários.
-      </p>
-    );
-  }
+function SortableHeader({ label, field, sorting, onSort }: SortableHeaderProps) {
+  const isActive = sorting.sortBy === field;
+  const iconRotation = isActive && sorting.sortOrder === "desc" ? "rotate-180" : "";
 
   return (
-    <form ref={formRef} className="space-y-6" action={formAction}>
+    <th
+      className="p-3 text-left"
+      scope="col"
+      aria-sort={isActive ? (sorting.sortOrder === "asc" ? "ascending" : "descending") : "none"}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(field)}
+        className={cn(
+          "flex items-center gap-1 text-xs font-medium uppercase tracking-wide",
+          isActive ? "text-foreground" : "text-muted-foreground",
+        )}
+      >
+        {label}
+        <ChevronUp
+          className={cn(
+            "h-4 w-4 transition-transform",
+            iconRotation,
+            isActive ? "text-foreground" : "text-muted-foreground/60",
+          )}
+        />
+      </button>
+    </th>
+  );
+}
+
+interface UserDialogProps {
+  mode: "create" | "edit" | "view";
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  user: SerializableUser | null;
+  actorRole: Role;
+}
+
+function UserDialog({ mode, open, onOpenChange, user, actorRole }: UserDialogProps) {
+  const router = useRouter();
+  const [deleteFeedback, setDeleteFeedback] = useState<UserManagementActionState>(initialActionState);
+  const [isDeleting, startDeleting] = useTransition();
+
+  const handleClose = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      setDeleteFeedback(initialActionState);
+    }
+    onOpenChange(nextOpen);
+  };
+
+  const canDelete = mode === "edit" && user ? canManageRole(actorRole, user.role) : false;
+
+  const handleDelete = () => {
+    if (!user || !canDelete) {
+      return;
+    }
+
+    if (!window.confirm(`Remover o usuário ${user.name}? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("userId", user.id);
+
+    setDeleteFeedback(initialActionState);
+    startDeleting(async () => {
+      const result = await deleteUserAction(formData);
+      setDeleteFeedback(result);
+      if (result.status === "success") {
+        router.refresh();
+        handleClose(false);
+      }
+    });
+  };
+
+  const titleMap: Record<UserDialogProps["mode"], string> = {
+    create: "Cadastrar usuário",
+    edit: user?.name ?? "Editar usuário",
+    view: user?.name ?? "Usuário",
+  };
+
+  const descriptionMap: Record<UserDialogProps["mode"], string> = {
+    create: "Informe os dados iniciais do usuário. Compartilhe a senha provisória com segurança.",
+    edit: "Atualize dados pessoais, perfil de acesso ou redefina a senha do usuário.",
+    view: "Consulte os dados do usuário e acompanhe histórico de criação e atualização.",
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader className="space-y-1">
+          <DialogTitle>{titleMap[mode]}</DialogTitle>
+          <DialogDescription>{descriptionMap[mode]}</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {mode === "view" ? (
+            user ? <UserDetails user={user} /> : null
+          ) : (
+            <UserForm
+              mode={mode}
+              user={mode === "edit" ? user : null}
+              actorRole={actorRole}
+              onCompleted={() => {
+                router.refresh();
+                handleClose(false);
+              }}
+            />
+          )}
+
+          {mode === "edit" && user ? (
+            <div className="space-y-2 rounded-lg border border-border/70 bg-muted/40 p-4">
+              <p className="text-sm font-medium text-destructive">Remover usuário</p>
+              <p className="text-xs text-muted-foreground">
+                A remoção impede o acesso do usuário ao sistema. Essa ação não pode ser desfeita.
+              </p>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={!canDelete || isDeleting}
+              >
+                {isDeleting ? "Removendo..." : "Remover usuário"}
+              </Button>
+              {deleteFeedback.status === "error" ? (
+                <p className="text-sm text-destructive">{deleteFeedback.message}</p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="secondary" onClick={() => handleClose(false)}>
+            Fechar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface UserFormProps {
+  mode: "create" | "edit";
+  user: SerializableUser | null;
+  actorRole: Role;
+  onCompleted: () => void;
+}
+
+function UserForm({ mode, user, actorRole, onCompleted }: UserFormProps) {
+  const [formState, formAction, isPending] = useActionState(
+    mode === "create" ? createUserAction : updateUserAction,
+    initialActionState,
+  );
+  const assignableRoles = useMemo(() => getAssignableRoles(actorRole, user?.role), [actorRole, user?.role]);
+
+  useEffect(() => {
+    if (formState.status === "success") {
+      onCompleted();
+    }
+  }, [formState.status, onCompleted]);
+
+  return (
+    <form action={formAction} className="space-y-4">
+      {mode === "edit" && user ? <input type="hidden" name="userId" value={user.id} /> : null}
       <div className="grid gap-4 md:grid-cols-2">
         <div className="grid gap-2">
-          <Label htmlFor="name">Nome completo</Label>
-          <Input id="name" name="name" placeholder="Nome e sobrenome" required />
+          <Label htmlFor="user-name">Nome completo</Label>
+          <Input
+            id="user-name"
+            name="name"
+            defaultValue={user?.name ?? ""}
+            placeholder="Nome e sobrenome"
+            required
+          />
         </div>
         <div className="grid gap-2">
-          <Label htmlFor="email">E-mail institucional</Label>
+          <Label htmlFor="user-email">E-mail institucional</Label>
           <Input
-            id="email"
+            id="user-email"
             name="email"
             type="email"
+            defaultValue={user?.email ?? ""}
             placeholder="usuario@instituicao.edu.br"
             required
           />
         </div>
       </div>
+
       <div className="grid gap-4 md:grid-cols-3">
         <div className="grid gap-2">
-          <Label htmlFor="role">Perfil de acesso</Label>
+          <Label htmlFor="user-role">Perfil de acesso</Label>
           <select
-            id="role"
+            id="user-role"
             name="role"
+            defaultValue={mode === "edit" ? user?.role ?? undefined : assignableRoles[0]}
             className="h-10 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            defaultValue={availableRoles[0]}
+            disabled={assignableRoles.length <= 1}
           >
-            {availableRoles.map((role) => (
+            {assignableRoles.map((role) => (
               <option key={role} value={role}>
                 {ROLE_LABELS[role]}
               </option>
             ))}
           </select>
         </div>
+
+        {mode === "edit" ? (
+          <div className="grid gap-2">
+            <Label htmlFor="user-status">Status</Label>
+            <select
+              id="user-status"
+              name="status"
+              defaultValue={user?.status ?? UserStatus.ACTIVE}
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              {Object.values(UserStatus).map((status) => (
+                <option key={status} value={status}>
+                  {STATUS_LABELS[status]}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+
         <div className="grid gap-2">
-          <Label htmlFor="password">Senha provisória</Label>
+          <Label htmlFor="user-password">{mode === "create" ? "Senha provisória" : "Redefinir senha"}</Label>
           <Input
-            id="password"
+            id="user-password"
             name="password"
             type="password"
-            placeholder="Mínimo 8 caracteres"
-            required
+            placeholder={mode === "create" ? "Mínimo 8 caracteres" : "Opcional"}
             minLength={8}
+            required={mode === "create"}
           />
         </div>
+
         <div className="grid gap-2">
-          <Label htmlFor="confirmPassword">Confirmar senha</Label>
+          <Label htmlFor="user-confirm-password">Confirmar senha</Label>
           <Input
-            id="confirmPassword"
+            id="user-confirm-password"
             name="confirmPassword"
             type="password"
             placeholder="Repita a senha"
-            required
             minLength={8}
+            required={mode === "create"}
           />
         </div>
       </div>
 
-      {state.status === "error" ? (
-        <p className="text-sm text-destructive" role="alert">
-          {state.message ?? "Não foi possível cadastrar o usuário."}
-        </p>
+      {formState.status === "error" ? (
+        <p className="text-sm text-destructive">{formState.message ?? "Não foi possível salvar os dados."}</p>
       ) : null}
 
-      {state.status === "success" ? (
-        <p className="rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-900 dark:text-emerald-100">
-          {state.message}
-        </p>
-      ) : null}
-
-      <Button type="submit" className="w-full md:w-auto">
-        Cadastrar usuário
+      <Button type="submit" disabled={isPending}>
+        {isPending ? "Salvando..." : mode === "create" ? "Cadastrar usuário" : "Salvar alterações"}
       </Button>
     </form>
   );
 }
 
-interface UsersListProps {
-  users: SerializableUser[];
-  actorRole: Role;
-}
-
-function UsersList({ users, actorRole }: UsersListProps) {
-  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
-
-  if (users.length === 0) {
-    return (
-      <div className="rounded-md border border-dashed border-border/60 bg-muted/30 p-6 text-sm text-muted-foreground">
-        Nenhum usuário encontrado para o escopo do seu perfil. Ao cadastrar novos usuários eles aparecerão aqui.
-      </div>
-    );
-  }
-
+function UserDetails({ user }: { user: SerializableUser }) {
   return (
-    <ul className="space-y-4">
-      {users.map((user) => (
-        <li key={user.id}>
-          <article className="rounded-lg border border-border/60 bg-muted/20 p-4 shadow-sm">
-            <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="text-base font-semibold text-foreground">{user.name}</h3>
-                <p className="text-sm text-muted-foreground">{user.email}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border px-2.5 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {ROLE_LABELS[user.role]}
-                </span>
-                <span
-                  className={`rounded-full border px-2.5 py-1 text-xs font-medium ${STATUS_BADGE_STYLES[user.status]}`}
-                >
-                  {STATUS_LABELS[user.status]}
-                </span>
-                <p className="text-xs text-muted-foreground">
-                  Atualizado em {formatDate(user.updatedAt)}
-                </p>
-              </div>
-            </header>
-
-            <footer className="mt-4 flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() =>
-                  setExpandedUserId((current) => (current === user.id ? null : user.id))
-                }
-              >
-                {expandedUserId === user.id ? "Cancelar edição" : "Editar"}
-              </Button>
-              <DeleteUserButton
-                userId={user.id}
-                disabled={!canManageRole(actorRole, user.role)}
-              />
-            </footer>
-
-            {expandedUserId === user.id ? (
-              <div className="mt-6 border-t border-border/50 pt-6">
-                <UserEditForm
-                  user={user}
-                  actorRole={actorRole}
-                  onSuccess={() => setExpandedUserId(null)}
-                />
-              </div>
-            ) : null}
-          </article>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-interface UserEditFormProps {
-  user: SerializableUser;
-  actorRole: Role;
-  onSuccess: () => void;
-}
-
-function UserEditForm({ user, actorRole, onSuccess }: UserEditFormProps) {
-  const availableRoles = useMemo(
-    () => getAssignableRoles(actorRole, user.role),
-    [actorRole, user.role],
-  );
-
-  const [state, formAction] = useFormState(updateUserAction, initialActionState);
-  const formRef = useRef<HTMLFormElement>(null);
-
-  useEffect(() => {
-    if (state.status === "success") {
-      formRef.current?.reset();
-      onSuccess();
-    }
-  }, [state.status, onSuccess]);
-
-  return (
-    <form ref={formRef} className="space-y-5" action={formAction}>
-      <input type="hidden" name="userId" value={user.id} />
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="grid gap-2">
-          <Label htmlFor={`name-${user.id}`}>Nome completo</Label>
-          <Input
-            id={`name-${user.id}`}
-            name="name"
-            defaultValue={user.name}
-            required
-          />
+    <section className="space-y-4">
+      <div className="grid gap-3 rounded-lg border border-border/70 bg-muted/40 p-4 text-sm">
+        <div className="grid gap-1">
+          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Nome</span>
+          <span className="font-medium text-foreground">{user.name}</span>
         </div>
-        <div className="grid gap-2">
-          <Label htmlFor={`email-${user.id}`}>E-mail institucional</Label>
-          <Input
-            id={`email-${user.id}`}
-            name="email"
-            type="email"
-            defaultValue={user.email}
-            required
-          />
+        <div className="grid gap-1">
+          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">E-mail</span>
+          <span>{user.email}</span>
         </div>
-      </div>
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className="grid gap-2">
-          <Label htmlFor={`role-${user.id}`}>Perfil de acesso</Label>
-          <select
-            id={`role-${user.id}`}
-            name="role"
-            defaultValue={user.role}
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            disabled={availableRoles.length <= 1 && availableRoles[0] === user.role}
+        <div className="grid gap-1">
+          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Perfil</span>
+          <span>{ROLE_LABELS[user.role]}</span>
+        </div>
+        <div className="grid gap-1">
+          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Status</span>
+          <span
+            className={`inline-flex w-fit items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium ${STATUS_BADGE_STYLES[user.status]}`}
           >
-            {availableRoles.map((role) => (
-              <option key={role} value={role}>
-                {ROLE_LABELS[role]}
-              </option>
-            ))}
-          </select>
+            {STATUS_LABELS[user.status]}
+          </span>
         </div>
-        <div className="grid gap-2">
-          <Label htmlFor={`status-${user.id}`}>Status</Label>
-          <select
-            id={`status-${user.id}`}
-            name="status"
-            defaultValue={user.status}
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          >
-            {Object.values(UserStatus).map((status) => (
-              <option key={status} value={status}>
-                {STATUS_LABELS[status]}
-              </option>
-            ))}
-          </select>
+        <div className="grid gap-1">
+          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Criado em</span>
+          <span>{new Date(user.createdAt).toLocaleDateString()}</span>
         </div>
-        <div className="grid gap-2">
-          <Label htmlFor={`password-${user.id}`}>Redefinir senha</Label>
-          <Input
-            id={`password-${user.id}`}
-            name="password"
-            type="password"
-            placeholder="Opcional"
-            minLength={8}
-          />
+        <div className="grid gap-1">
+          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Atualizado em</span>
+          <span>{new Date(user.updatedAt).toLocaleDateString()}</span>
         </div>
       </div>
-      <div className="grid gap-2 md:grid-cols-3">
-        <div className="md:col-start-3">
-          <Label htmlFor={`confirmPassword-${user.id}`}>Confirmar nova senha</Label>
-          <Input
-            id={`confirmPassword-${user.id}`}
-            name="confirmPassword"
-            type="password"
-            placeholder="Repita a senha"
-            minLength={8}
-          />
-        </div>
-      </div>
-
-      {state.status === "error" ? (
-        <p className="text-sm text-destructive" role="alert">
-          {state.message ?? "Não foi possível atualizar o usuário."}
-        </p>
-      ) : null}
-
-      <Button type="submit">Salvar alterações</Button>
-    </form>
-  );
-}
-
-interface DeleteUserButtonProps {
-  userId: string;
-  disabled: boolean;
-}
-
-function DeleteUserButton({ userId, disabled }: DeleteUserButtonProps) {
-  const [feedback, setFeedback] = useState<UserManagementActionState>(initialActionState);
-  const [isPending, startTransition] = useTransition();
-
-  const handleDelete = () => {
-    if (disabled || isPending) {
-      return;
-    }
-
-    setFeedback(initialActionState);
-    const formData = new FormData();
-    formData.append("userId", userId);
-
-    startTransition(async () => {
-      const result = await deleteUserAction(formData);
-      setFeedback(result);
-    });
-  };
-
-  return (
-    <div className="flex flex-col gap-2">
-      <Button
-        type="button"
-        variant="destructive"
-        disabled={disabled || isPending}
-        onClick={handleDelete}
-      >
-        {isPending ? "Removendo..." : "Remover"}
-      </Button>
-      {feedback.status === "error" ? (
-        <span className="text-xs text-destructive" role="alert">
-          {feedback.message}
-        </span>
-      ) : null}
-    </div>
+    </section>
   );
 }
 
 function getAssignableRoles(actorRole: Role, currentRole?: Role): Role[] {
   if (actorRole === Role.ADMIN) {
-    const roles = [Role.PROFESSOR, Role.TECHNICIAN, Role.ADMIN];
+    const roles = [Role.ADMIN, Role.TECHNICIAN, Role.PROFESSOR];
     return currentRole && !roles.includes(currentRole) ? [...roles, currentRole] : roles;
   }
 
@@ -448,16 +597,4 @@ function canManageRole(actorRole: Role, targetRole: Role) {
   }
 
   return false;
-}
-
-function formatDate(value: string) {
-  try {
-    return new Intl.DateTimeFormat("pt-BR", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    }).format(new Date(value));
-  } catch {
-    return value;
-  }
 }

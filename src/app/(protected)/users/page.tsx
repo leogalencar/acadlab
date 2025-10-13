@@ -3,14 +3,22 @@ import { redirect } from "next/navigation";
 import { Role } from "@prisma/client";
 
 import { auth } from "@/auth";
+import { UserFilters } from "@/features/user-management/components/user-filters";
 import { UserManagementView } from "@/features/user-management/components/user-management-view";
-import { prisma } from "@/lib/prisma";
+import { buildUserFiltersState, getUsersWithFilters } from "@/features/user-management/server/queries";
+import { resolveSearchParams, type SearchParamsLike } from "@/features/shared/search-params";
 
 export const metadata: Metadata = {
   title: "Gestão de usuários • AcadLab",
 };
 
-export default async function UsersManagementPage() {
+type UsersSearchParams = Record<string, string | string[] | undefined>;
+
+export default async function UsersManagementPage({
+  searchParams,
+}: {
+  searchParams?: SearchParamsLike<UsersSearchParams>;
+}) {
   const session = await auth();
 
   if (!session?.user) {
@@ -24,32 +32,35 @@ export default async function UsersManagementPage() {
     redirect("/dashboard");
   }
 
-  const where =
-    actorRole === Role.ADMIN
-      ? {}
-      : {
-          role: Role.PROFESSOR,
-        };
+  const resolvedParams = await resolveSearchParams<UsersSearchParams>(searchParams);
+  const {
+    filters,
+    searchTerm,
+    roles,
+    statuses,
+    createdFrom,
+    createdTo,
+    updatedFrom,
+    updatedTo,
+    sorting,
+    pagination,
+  } = buildUserFiltersState(resolvedParams);
 
-  const users = await prisma.user.findMany({
-    where,
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      status: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-    orderBy: { createdAt: "desc" },
+  const { users, total } = await getUsersWithFilters({
+    actorRole,
+    searchTerm,
+    roles,
+    statuses,
+    createdFrom,
+    createdTo,
+    updatedFrom,
+    updatedTo,
+    sorting,
+    pagination,
   });
 
-  const serializedUsers = users.map((user) => ({
-    ...user,
-    createdAt: user.createdAt.toISOString(),
-    updatedAt: user.updatedAt.toISOString(),
-  }));
+  const paginationState = { ...pagination, total };
+  const availableRoles = actorRole === Role.ADMIN ? Object.values(Role) : [Role.PROFESSOR];
 
   return (
     <div className="space-y-8">
@@ -66,7 +77,19 @@ export default async function UsersManagementPage() {
           </p>
         </div>
       </header>
-      <UserManagementView users={serializedUsers} actorRole={actorRole} />
+      <UserFilters
+        filters={filters}
+        sorting={sorting}
+        perPage={paginationState.perPage}
+        availableRoles={availableRoles}
+      />
+      <UserManagementView
+        users={users}
+        actorRole={actorRole}
+        sorting={sorting}
+        pagination={paginationState}
+        availableRoles={availableRoles}
+      />
     </div>
   );
 }

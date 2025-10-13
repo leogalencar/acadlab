@@ -1,21 +1,53 @@
-import { ReservationStatus } from "@prisma/client";
-import { Prisma } from "@prisma/client";
+import { LaboratoryStatus, ReservationStatus, Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 
-import type { LaboratoryFiltersState, SerializableLaboratory } from "@/features/lab-management/types";
+import type {
+  LaboratoryFiltersState,
+  LaboratoryPaginationState,
+  LaboratorySortField,
+  LaboratorySortingState,
+  SerializableLaboratory,
+} from "@/features/lab-management/types";
+import { DEFAULT_PAGE_SIZE } from "@/features/shared/table";
 
 interface GetLaboratoriesOptions {
   availableFrom?: Date;
   availableTo?: Date;
-  softwareIds?: string[];
+  softwareIds: string[];
+  statuses: LaboratoryStatus[];
+  minCapacity?: number;
+  maxCapacity?: number;
+  searchTerm?: string;
+  updatedFrom?: Date;
+  updatedTo?: Date;
+  sorting: LaboratorySortingState;
+  pagination: { page: number; perPage: number };
 }
+
+const LAB_SORT_FIELDS: LaboratorySortField[] = [
+  "name",
+  "capacity",
+  "status",
+  "updatedAt",
+];
 
 export async function getLaboratoriesWithFilters({
   availableFrom,
   availableTo,
   softwareIds,
-}: GetLaboratoriesOptions): Promise<SerializableLaboratory[]> {
+  statuses,
+  minCapacity,
+  maxCapacity,
+  searchTerm,
+  updatedFrom,
+  updatedTo,
+  sorting,
+  pagination,
+}: GetLaboratoriesOptions): Promise<{
+  laboratories: SerializableLaboratory[];
+  total: number;
+}> {
   const conditions: Prisma.LaboratoryWhereInput[] = [];
 
   if (availableFrom && availableTo) {
@@ -30,49 +62,118 @@ export async function getLaboratoriesWithFilters({
     });
   }
 
-  if (softwareIds && softwareIds.length > 0) {
-    conditions.push(
-      ...softwareIds.map((softwareId) => ({
-        softwareAssociations: {
-          some: { softwareId },
+  if (softwareIds.length > 0) {
+    conditions.push({
+      softwareAssociations: {
+        some: {
+          softwareId: { in: softwareIds },
         },
-      })),
-    );
+      },
+    });
   }
 
-  const laboratories = await prisma.laboratory.findMany({
-    where: conditions.length > 0 ? { AND: conditions } : undefined,
-    orderBy: [{ name: "asc" }],
-    include: {
-      softwareAssociations: {
-        include: {
-          software: true,
-          installedBy: { select: { id: true, name: true } },
-        },
-        orderBy: { software: { name: "asc" } },
-      },
-    },
-  });
+  if (statuses.length > 0) {
+    conditions.push({ status: { in: statuses } });
+  }
 
-  return laboratories.map((laboratory) => ({
-    id: laboratory.id,
-    name: laboratory.name,
-    capacity: laboratory.capacity,
-    status: laboratory.status,
-    description: laboratory.description,
-    createdAt: laboratory.createdAt.toISOString(),
-    updatedAt: laboratory.updatedAt.toISOString(),
-    software: laboratory.softwareAssociations.map((association) => ({
-      softwareId: association.softwareId,
-      name: association.software.name,
-      version: association.software.version,
-      supplier: association.software.supplier,
-      installedAt: association.installedAt.toISOString(),
-      installedByName: association.installedBy?.name ?? null,
-      installedById: association.installedBy?.id ?? null,
+  const capacityFilter: Prisma.IntFilter = {};
+  if (typeof minCapacity === "number") {
+    capacityFilter.gte = minCapacity;
+  }
+  if (typeof maxCapacity === "number") {
+    capacityFilter.lte = maxCapacity;
+  }
+  if (Object.keys(capacityFilter).length > 0) {
+    conditions.push({ capacity: capacityFilter });
+  }
+
+  if (searchTerm) {
+    conditions.push({
+      OR: [
+        { name: { contains: searchTerm, mode: "insensitive" } },
+        { description: { contains: searchTerm, mode: "insensitive" } },
+      ],
+    });
+  }
+
+  const updatedFilter: Prisma.DateTimeFilter = {};
+  if (updatedFrom) {
+    updatedFilter.gte = updatedFrom;
+  }
+  if (updatedTo) {
+    updatedFilter.lte = updatedTo;
+  }
+  if (Object.keys(updatedFilter).length > 0) {
+    conditions.push({ updatedAt: updatedFilter });
+  }
+
+  const where = conditions.length > 0 ? { AND: conditions } : undefined;
+
+  const orderBy: Prisma.LaboratoryOrderByWithRelationInput[] = [];
+  switch (sorting.sortBy) {
+    case "capacity":
+      orderBy.push({ capacity: sorting.sortOrder });
+      break;
+    case "status":
+      orderBy.push({ status: sorting.sortOrder });
+      break;
+    case "updatedAt":
+      orderBy.push({ updatedAt: sorting.sortOrder });
+      break;
+    case "name":
+    default:
+      orderBy.push({ name: sorting.sortOrder });
+      break;
+  }
+  if (sorting.sortBy !== "name") {
+    orderBy.push({ name: "asc" });
+  }
+
+  const page = Math.max(1, pagination.page);
+  const perPage = Math.max(1, pagination.perPage);
+  const skip = (page - 1) * perPage;
+
+  const [total, laboratories] = await Promise.all([
+    prisma.laboratory.count({ where }),
+    prisma.laboratory.findMany({
+      where,
+      orderBy,
+      skip,
+      take: perPage,
+      include: {
+        softwareAssociations: {
+          include: {
+            software: true,
+            installedBy: { select: { id: true, name: true } },
+          },
+          orderBy: { software: { name: "asc" } },
+        },
+      },
+    }),
+  ]);
+
+  return {
+    total,
+    laboratories: laboratories.map((laboratory) => ({
+      id: laboratory.id,
+      name: laboratory.name,
+      capacity: laboratory.capacity,
+      status: laboratory.status,
+      description: laboratory.description,
+      createdAt: laboratory.createdAt.toISOString(),
+      updatedAt: laboratory.updatedAt.toISOString(),
+      software: laboratory.softwareAssociations.map((association) => ({
+        softwareId: association.softwareId,
+        name: association.software.name,
+        version: association.software.version,
+        supplier: association.software.supplier,
+        installedAt: association.installedAt.toISOString(),
+        installedByName: association.installedBy?.name ?? null,
+        installedById: association.installedBy?.id ?? null,
+      })),
+      isAvailableForSelectedRange: Boolean(availableFrom && availableTo),
     })),
-    isAvailableForSelectedRange: Boolean(availableFrom && availableTo),
-  }));
+  };
 }
 
 export function buildFiltersState(
@@ -82,33 +183,101 @@ export function buildFiltersState(
   availableFrom?: Date;
   availableTo?: Date;
   softwareIds: string[];
+  statuses: LaboratoryStatus[];
+  minCapacity?: number;
+  maxCapacity?: number;
+  searchTerm?: string;
+  sorting: LaboratorySortingState;
+  pagination: LaboratoryPaginationState;
 } {
   const availableFromRaw = getFirst(params["availableFrom"]);
   const availableToRaw = getFirst(params["availableTo"]);
   const softwareRaw = params["software"];
+  const statusesRaw = params["status"];
+  const minCapacityRaw = getFirst(params["minCapacity"]);
+  const maxCapacityRaw = getFirst(params["maxCapacity"]);
+  const searchRaw = getFirst(params["search"]);
+  const sortByRaw = getFirst(params["sortBy"]);
+  const sortOrderRaw = getFirst(params["sortOrder"]);
+  const pageRaw = getFirst(params["page"]);
+  const perPageRaw = getFirst(params["perPage"]);
 
   const availableFrom = parseDate(availableFromRaw);
   const availableTo = parseDate(availableToRaw);
+  const updatedFromRaw = getFirst(params["updatedFrom"]);
+  const updatedToRaw = getFirst(params["updatedTo"]);
+  let updatedFrom = parseDate(updatedFromRaw);
+  let updatedTo = parseDate(updatedToRaw);
+
+  if (updatedFrom && updatedTo && updatedFrom > updatedTo) {
+    updatedFrom = undefined;
+    updatedTo = undefined;
+  }
   const softwareIds = normalizeToArray(softwareRaw);
+  const statuses = normalizeToArray(statusesRaw)
+    .map((status) => safeParseStatus(status))
+    .filter((status): status is LaboratoryStatus => Boolean(status));
+
+  const minCapacity = parseInteger(minCapacityRaw);
+  const maxCapacity = parseInteger(maxCapacityRaw);
+  const searchTerm = searchRaw?.trim() ? searchRaw.trim() : undefined;
+
+  const sortBy = LAB_SORT_FIELDS.includes(sortByRaw as LaboratorySortField)
+    ? (sortByRaw as LaboratorySortField)
+    : "name";
+  const sortOrder = sortOrderRaw === "desc" ? "desc" : "asc";
+
+  const page = Math.max(1, parseInteger(pageRaw) ?? 1);
+  const perPage = normalizePageSize(parseInteger(perPageRaw));
 
   const filters: LaboratoryFiltersState = {
     availableFrom: availableFromRaw ?? undefined,
     availableTo: availableToRaw ?? undefined,
     softwareIds,
+    statuses,
+    minCapacity: minCapacityRaw ?? undefined,
+    maxCapacity: maxCapacityRaw ?? undefined,
+    search: searchTerm,
+    updatedFrom: updatedFromRaw ?? undefined,
+    updatedTo: updatedToRaw ?? undefined,
   };
+
+  const sorting: LaboratorySortingState = { sortBy, sortOrder };
+  const pagination: LaboratoryPaginationState = { page, perPage, total: 0 };
 
   if (!availableFrom || !availableTo || availableFrom >= availableTo) {
     return {
       filters: {
+        ...filters,
         availableFrom: undefined,
         availableTo: undefined,
-        softwareIds,
       },
       softwareIds,
+      statuses,
+      minCapacity,
+      maxCapacity,
+      searchTerm,
+      sorting,
+      pagination,
+      updatedFrom,
+      updatedTo,
     };
   }
 
-  return { filters, availableFrom, availableTo, softwareIds };
+  return {
+    filters,
+    availableFrom,
+    availableTo,
+    softwareIds,
+    statuses,
+    minCapacity,
+    maxCapacity,
+    searchTerm,
+    updatedFrom,
+    updatedTo,
+    sorting,
+    pagination,
+  };
 }
 
 function getFirst(value?: string | string[] | null): string | null {
@@ -139,4 +308,46 @@ function normalizeToArray(value?: string | string[] | null): string[] {
   }
 
   return Array.isArray(value) ? value.filter(Boolean) : value ? [value] : [];
+}
+
+function parseInteger(value: string | null): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+
+  if (Number.isNaN(parsed)) {
+    return undefined;
+  }
+
+  return parsed;
+}
+
+function normalizePageSize(value?: number): number {
+  if (!value) {
+    return DEFAULT_PAGE_SIZE;
+  }
+
+  if (value <= 0) {
+    return DEFAULT_PAGE_SIZE;
+  }
+
+  if (value > 100) {
+    return 100;
+  }
+
+  return value;
+}
+
+function safeParseStatus(value?: string | null): LaboratoryStatus | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  if (value === LaboratoryStatus.ACTIVE || value === LaboratoryStatus.INACTIVE) {
+    return value;
+  }
+
+  return undefined;
 }

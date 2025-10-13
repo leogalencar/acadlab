@@ -10,12 +10,17 @@ import {
 } from "react";
 import type { FormEvent } from "react";
 import { LaboratoryStatus, Role } from "@prisma/client";
+import { ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
+import type { LaboratoryPaginationState, LaboratorySortingState, LaboratorySortField, SerializableLaboratory } from "@/features/lab-management/types";
 import { idleActionState, type ActionState } from "@/features/shared/types";
+import { PAGE_SIZE_OPTIONS } from "@/features/shared/table";
 import {
   assignSoftwareToLaboratoryAction,
   createLaboratoryAction,
@@ -23,7 +28,7 @@ import {
   removeSoftwareFromLaboratoryAction,
   updateLaboratoryAction,
 } from "@/features/lab-management/server/actions";
-import { canManageLaboratories, type SerializableLaboratory } from "@/features/lab-management/types";
+import { canManageLaboratories } from "@/features/lab-management/types";
 import { createSoftwareAction } from "@/features/software-management/server/actions";
 import type { SerializableSoftware } from "@/features/software-management/types";
 
@@ -41,29 +46,107 @@ interface LaboratoriesClientProps {
   actorRole: Role;
   laboratories: SerializableLaboratory[];
   softwareCatalog: SerializableSoftware[];
+  sorting: LaboratorySortingState;
+  pagination: LaboratoryPaginationState;
 }
 
 export function LaboratoriesClient({
   actorRole,
   laboratories,
   softwareCatalog,
+  sorting,
+  pagination,
 }: LaboratoriesClientProps) {
   const canManage = canManageLaboratories(actorRole);
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [dialogMode, setDialogMode] = useState<"create" | "edit" | "view">("create");
   const [isDialogOpen, setDialogOpen] = useState(false);
-  const [selectedLaboratory, setSelectedLaboratory] = useState<SerializableLaboratory | null>(null);
+  const [selectedLaboratoryId, setSelectedLaboratoryId] = useState<string | null>(null);
+  const [dialogKey, setDialogKey] = useState(0);
+
+  const selectedLaboratory = useMemo(() => {
+    if (!selectedLaboratoryId) {
+      return null;
+    }
+
+    return laboratories.find((laboratory) => laboratory.id === selectedLaboratoryId) ?? null;
+  }, [laboratories, selectedLaboratoryId]);
 
   const handleCreateClick = () => {
     setDialogMode("create");
-    setSelectedLaboratory(null);
+    setSelectedLaboratoryId(null);
     setDialogOpen(true);
   };
 
-  const handleRowClick = (laboratory: SerializableLaboratory) => {
+  const handleRowClick = (laboratoryId: string) => {
     setDialogMode(canManage ? "edit" : "view");
-    setSelectedLaboratory(laboratory);
+    setSelectedLaboratoryId(laboratoryId);
     setDialogOpen(true);
   };
+
+  useEffect(() => {
+    if (!selectedLaboratoryId) {
+      return;
+    }
+
+    const exists = laboratories.some((laboratory) => laboratory.id === selectedLaboratoryId);
+
+    if (!exists) {
+      setDialogOpen(false);
+      setDialogMode("create");
+      setSelectedLaboratoryId(null);
+    }
+  }, [laboratories, selectedLaboratoryId]);
+
+  const handleDialogOpenChange = (nextOpen: boolean) => {
+    setDialogOpen(nextOpen);
+    if (!nextOpen) {
+      setDialogMode("create");
+      setSelectedLaboratoryId(null);
+      setDialogKey((key) => key + 1);
+    }
+  };
+
+  const updateQueryParams = (updates: Record<string, string | null>) => {
+    const params = new URLSearchParams(searchParams.toString());
+
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value === null) {
+        params.delete(key);
+      } else {
+        params.set(key, value);
+      }
+    });
+
+    const query = params.toString();
+    router.push(query ? `?${query}` : "");
+  };
+
+  const handleSortChange = (field: LaboratorySortField) => {
+    const isSameField = sorting.sortBy === field;
+    const nextOrder = isSameField && sorting.sortOrder === "asc" ? "desc" : "asc";
+
+    updateQueryParams({
+      sortBy: field,
+      sortOrder: nextOrder,
+      page: null,
+    });
+  };
+
+  const handlePageChange = (nextPage: number) => {
+    updateQueryParams({ page: String(nextPage) });
+  };
+
+  const handlePerPageChange = (nextPerPage: number) => {
+    updateQueryParams({ perPage: String(nextPerPage), page: "1" });
+  };
+
+  const { page, perPage, total } = pagination;
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  const hasResults = total > 0;
+  const rangeStart = hasResults ? (page - 1) * perPage + 1 : 0;
+  const rangeEnd = hasResults ? Math.min(total, page * perPage) : 0;
 
   const tableRows = laboratories.length > 0 ? (
     laboratories.map((laboratory) => {
@@ -75,12 +158,11 @@ export function LaboratoriesClient({
       return (
         <tr
           key={laboratory.id}
-          onClick={() => handleRowClick(laboratory)}
-          className={
-            canManage
-              ? "cursor-pointer transition-colors hover:bg-muted/60"
-              : ""
-          }
+          onClick={() => handleRowClick(laboratory.id)}
+          className={cn(
+            "transition-colors",
+            canManage && "cursor-pointer hover:bg-muted/60",
+          )}
         >
           <td className="p-4 font-medium text-foreground">{laboratory.name}</td>
           <td className="p-4 text-muted-foreground">{laboratory.capacity}</td>
@@ -95,13 +177,16 @@ export function LaboratoriesClient({
               : "Nenhum software associado"}
           </td>
           <td className="p-4 text-xs text-muted-foreground">{availableMessage}</td>
+          <td className="p-4 text-xs text-muted-foreground">
+            {new Date(laboratory.updatedAt).toLocaleDateString()}
+          </td>
         </tr>
       );
     })
   ) : (
     <tr>
-      <td colSpan={5} className="p-8 text-center text-sm text-muted-foreground">
-        Nenhum laboratório cadastrado até o momento.
+      <td colSpan={6} className="p-8 text-center text-sm text-muted-foreground">
+        Nenhum laboratório encontrado.
         {canManage
           ? " Utilize o botão acima para registrar um novo ambiente."
           : " Entre em contato com a equipe técnica para solicitar o cadastro."}
@@ -129,26 +214,143 @@ export function LaboratoriesClient({
         <table className="w-full min-w-[720px] border-collapse text-sm">
           <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
-              <th className="p-3 text-left font-medium">Laboratório</th>
-              <th className="p-3 text-left font-medium">Capacidade</th>
-              <th className="p-3 text-left font-medium">Status</th>
+              <SortableHeader
+                label="Laboratório"
+                field="name"
+                sorting={sorting}
+                onSort={handleSortChange}
+              />
+              <SortableHeader
+                label="Capacidade"
+                field="capacity"
+                sorting={sorting}
+                onSort={handleSortChange}
+                alignment="left"
+              />
+              <SortableHeader
+                label="Status"
+                field="status"
+                sorting={sorting}
+                onSort={handleSortChange}
+                alignment="left"
+              />
               <th className="p-3 text-left font-medium">Softwares instalados</th>
               <th className="p-3 text-left font-medium">Disponibilidade</th>
+              <SortableHeader
+                label="Atualizado em"
+                field="updatedAt"
+                sorting={sorting}
+                onSort={handleSortChange}
+                alignment="left"
+              />
             </tr>
           </thead>
           <tbody>{tableRows}</tbody>
         </table>
       </div>
 
+      <div className="flex flex-col gap-4 rounded-xl border border-border/60 bg-card p-4 text-sm md:flex-row md:items-center md:justify-between">
+        <p className="text-muted-foreground">
+          {hasResults
+            ? `Mostrando ${rangeStart}-${rangeEnd} de ${total} laboratório${total === 1 ? "" : "s"}`
+            : "Nenhum laboratório encontrado."}
+        </p>
+        <div className="flex flex-wrap items-center gap-4">
+          <label className="flex items-center gap-2 text-muted-foreground">
+            Linhas por página
+            <select
+              className="h-9 rounded-md border border-input bg-background px-2 text-sm shadow-sm"
+              value={perPage}
+              onChange={(event) => handlePerPageChange(Number(event.target.value))}
+            >
+              {PAGE_SIZE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+              {PAGE_SIZE_OPTIONS.includes(perPage) ? null : (
+                <option value={perPage}>{perPage}</option>
+              )}
+            </select>
+          </label>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9"
+              disabled={page <= 1}
+              onClick={() => handlePageChange(page - 1)}
+            >
+              <ChevronLeft className="mr-1 h-4 w-4" />
+              Anterior
+            </Button>
+            <span className="text-muted-foreground">
+              Página {page} de {totalPages}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9"
+              disabled={page >= totalPages}
+              onClick={() => handlePageChange(page + 1)}
+            >
+              Próxima
+              <ChevronRight className="ml-1 h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+
       <LaboratoryDialog
+        key={dialogKey}
         mode={dialogMode}
         open={isDialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={handleDialogOpenChange}
         laboratory={selectedLaboratory}
         softwareCatalog={softwareCatalog}
         canManage={canManage}
       />
     </div>
+  );
+}
+
+interface SortableHeaderProps {
+  label: string;
+  field: LaboratorySortField;
+  sorting: LaboratorySortingState;
+  onSort: (field: LaboratorySortField) => void;
+  alignment?: "left" | "right";
+}
+
+function SortableHeader({ label, field, sorting, onSort, alignment = "left" }: SortableHeaderProps) {
+  const isActive = sorting.sortBy === field;
+  const iconRotation = isActive && sorting.sortOrder === "desc" ? "rotate-180" : "";
+
+  return (
+    <th className={cn("p-3", alignment === "right" ? "text-right" : "text-left")}
+      scope="col"
+      aria-sort={isActive ? (sorting.sortOrder === "asc" ? "ascending" : "descending") : "none"}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(field)}
+        className={cn(
+          "flex items-center gap-1 font-medium uppercase tracking-wide text-xs",
+          isActive ? "text-foreground" : "text-muted-foreground",
+        )}
+      >
+        {label}
+        <ChevronUp
+          className={cn(
+            "h-4 w-4 transition-transform",
+            iconRotation,
+            isActive ? "text-foreground" : "text-muted-foreground/60",
+          )}
+        />
+      </button>
+    </th>
   );
 }
 
@@ -163,6 +365,7 @@ interface LaboratoryDialogProps {
 
 function LaboratoryDialog({ mode, open, onOpenChange, laboratory, softwareCatalog, canManage }: LaboratoryDialogProps) {
   const canEdit = mode === "edit" && canManage && Boolean(laboratory);
+  const router = useRouter();
   const titleMap: Record<"create" | "edit" | "view", string> = {
     create: "Cadastrar laboratório",
     edit: laboratory?.name ?? "Editar laboratório",
@@ -205,6 +408,7 @@ function LaboratoryDialog({ mode, open, onOpenChange, laboratory, softwareCatalo
         setDeleteFeedback(result);
         return;
       }
+      router.refresh();
       handleClose(false);
     });
   };
@@ -227,7 +431,14 @@ function LaboratoryDialog({ mode, open, onOpenChange, laboratory, softwareCatalo
 
         <div className="space-y-8 py-4">
           {mode !== "view" ? (
-            <LaboratoryForm mode={mode} laboratory={laboratory} onCompleted={() => handleClose(false)} />
+            <LaboratoryForm
+              mode={mode}
+              laboratory={laboratory}
+              onCompleted={() => {
+                router.refresh();
+                handleClose(false);
+              }}
+            />
           ) : laboratory ? (
             <LaboratoryDetails laboratory={laboratory} />
           ) : null}
@@ -237,6 +448,7 @@ function LaboratoryDialog({ mode, open, onOpenChange, laboratory, softwareCatalo
               laboratory={laboratory}
               availableSoftware={availableSoftware}
               canManage={canManage && mode !== "view"}
+              onRefresh={router.refresh}
             />
           ) : null}
 
@@ -387,9 +599,10 @@ interface SoftwareAssociationSectionProps {
   laboratory: SerializableLaboratory;
   availableSoftware: SerializableSoftware[];
   canManage: boolean;
+  onRefresh: () => void;
 }
 
-function SoftwareAssociationSection({ laboratory, availableSoftware, canManage }: SoftwareAssociationSectionProps) {
+function SoftwareAssociationSection({ laboratory, availableSoftware, canManage, onRefresh }: SoftwareAssociationSectionProps) {
   const [assignState, assignAction, isAssigning] = useActionState(assignSoftwareToLaboratoryAction, idleActionState);
   const [removeFeedback, setRemoveFeedback] = useState<ActionState | null>(null);
   const [isRemoving, startRemoving] = useTransition();
@@ -399,8 +612,9 @@ function SoftwareAssociationSection({ laboratory, availableSoftware, canManage }
   useEffect(() => {
     if (assignState.status === "success") {
       assignFormRef.current?.reset();
+      onRefresh();
     }
-  }, [assignState.status]);
+  }, [assignState.status, onRefresh]);
 
   if (!canManage) {
     return (
@@ -440,7 +654,9 @@ function SoftwareAssociationSection({ laboratory, availableSoftware, canManage }
       const result = await removeSoftwareFromLaboratoryAction(formData);
       if (result.status === "error") {
         setRemoveFeedback(result);
+        return;
       }
+      onRefresh();
     });
   };
 
@@ -459,7 +675,12 @@ function SoftwareAssociationSection({ laboratory, availableSoftware, canManage }
       </div>
 
       {showQuickCreate ? (
-        <SoftwareQuickCreate onSuccess={() => setShowQuickCreate(false)} />
+        <SoftwareQuickCreate
+          onSuccess={() => {
+            setShowQuickCreate(false);
+            onRefresh();
+          }}
+        />
       ) : null}
 
       <form

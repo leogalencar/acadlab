@@ -1,19 +1,28 @@
 import Link from "next/link";
+import { LaboratoryStatus } from "@prisma/client";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { LaboratoryFiltersState } from "@/features/lab-management/types";
+import type { LaboratoryFiltersState, LaboratorySortingState } from "@/features/lab-management/types";
 import type { SerializableSoftware } from "@/features/software-management/types";
 
 interface LaboratoryFiltersProps {
   filters: LaboratoryFiltersState;
+  sorting: LaboratorySortingState;
   softwareOptions: SerializableSoftware[];
+  perPage: number;
 }
 
-export function LaboratoryFilters({ filters, softwareOptions }: LaboratoryFiltersProps) {
+const STATUS_LABELS: Record<LaboratoryStatus, string> = {
+  [LaboratoryStatus.ACTIVE]: "Ativo",
+  [LaboratoryStatus.INACTIVE]: "Inativo",
+};
+
+export function LaboratoryFilters({ filters, sorting, softwareOptions, perPage }: LaboratoryFiltersProps) {
   const hasSoftwareOptions = softwareOptions.length > 0;
+  const selectedStatuses = new Set(filters.statuses);
 
   return (
     <Card>
@@ -25,7 +34,20 @@ export function LaboratoryFilters({ filters, softwareOptions }: LaboratoryFilter
       </CardHeader>
       <CardContent>
         <form className="space-y-6" method="get">
+          <input type="hidden" name="sortBy" value={sorting.sortBy} />
+          <input type="hidden" name="sortOrder" value={sorting.sortOrder} />
+          <input type="hidden" name="perPage" value={perPage} />
+
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-2">
+              <Label htmlFor="search">Buscar por nome ou descrição</Label>
+              <Input
+                id="search"
+                name="search"
+                defaultValue={filters.search ?? ""}
+                placeholder="Ex.: Redes, manutenção"
+              />
+            </div>
             <div className="grid gap-2">
               <Label htmlFor="availableFrom">Disponível a partir de</Label>
               <Input
@@ -43,6 +65,70 @@ export function LaboratoryFilters({ filters, softwareOptions }: LaboratoryFilter
                 type="datetime-local"
                 defaultValue={filters.availableTo ?? ""}
               />
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-2">
+              <Label htmlFor="minCapacity">Capacidade mínima</Label>
+              <Input
+                id="minCapacity"
+                name="minCapacity"
+                type="number"
+                min={1}
+                defaultValue={filters.minCapacity ?? ""}
+                placeholder="Ex.: 20"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="maxCapacity">Capacidade máxima</Label>
+              <Input
+                id="maxCapacity"
+                name="maxCapacity"
+                type="number"
+                min={1}
+                defaultValue={filters.maxCapacity ?? ""}
+                placeholder="Ex.: 50"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="updatedFrom">Atualizado a partir de</Label>
+              <Input
+                id="updatedFrom"
+                name="updatedFrom"
+                type="date"
+                defaultValue={filters.updatedFrom ?? ""}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="updatedTo">Atualizado até</Label>
+              <Input
+                id="updatedTo"
+                name="updatedTo"
+                type="date"
+                defaultValue={filters.updatedTo ?? ""}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <Label>Status operacional</Label>
+            <div className="flex flex-wrap gap-2">
+              {Object.values(LaboratoryStatus).map((status) => (
+                <label
+                  key={status}
+                  className="flex items-center gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                >
+                  <input
+                    type="checkbox"
+                    name="status"
+                    value={status}
+                    defaultChecked={selectedStatuses.has(status)}
+                    className="size-4 rounded border border-input accent-primary"
+                  />
+                  <span>{STATUS_LABELS[status]}</span>
+                </label>
+              ))}
             </div>
           </div>
 
