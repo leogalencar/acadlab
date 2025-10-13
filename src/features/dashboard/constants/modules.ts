@@ -29,9 +29,9 @@ export const DASHBOARD_MODULES: DashboardModule[] = [
     title: "Gestão de Laboratórios e Recursos",
     description: "Cadastre laboratórios, defina capacidades e organize responsáveis e equipamentos.",
     href: "/dashboard/laboratories",
-    roles: [Role.ADMIN, Role.TECHNICIAN],
+    roles: ALL_ROLES,
     icon: Settings,
-    status: "coming-soon",
+    status: "available",
   },
   {
     id: "laboratory-scheduling",
