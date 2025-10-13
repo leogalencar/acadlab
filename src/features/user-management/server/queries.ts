@@ -228,6 +228,20 @@ function normalizeToArray(value?: string | string[] | null): string[] {
   return Array.isArray(value) ? value.filter(Boolean) : value ? [value] : [];
 }
 
+function parseDate(value: string | null): Date | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return undefined;
+  }
+
+  return parsed;
+}
+
 function parseInteger(value: string | null): number | undefined {
   if (!value) {
     return undefined;

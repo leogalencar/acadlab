@@ -24,6 +24,12 @@ interface GetSoftwareCatalogOptions {
   pagination: { page: number; perPage: number };
 }
 
+const DEFAULT_GET_SOFTWARE_CATALOG_OPTIONS: GetSoftwareCatalogOptions = {
+  suppliers: [],
+  sorting: { sortBy: "name", sortOrder: "asc" },
+  pagination: { page: 1, perPage: DEFAULT_PAGE_SIZE },
+};
+
 export async function getSoftwareCatalog({
   searchTerm,
   suppliers,
@@ -33,7 +39,7 @@ export async function getSoftwareCatalog({
   createdTo,
   sorting,
   pagination,
-}: GetSoftwareCatalogOptions): Promise<{
+}: GetSoftwareCatalogOptions = DEFAULT_GET_SOFTWARE_CATALOG_OPTIONS): Promise<{
   software: SerializableSoftware[];
   total: number;
   supplierOptions: string[];
