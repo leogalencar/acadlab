@@ -1,14 +1,5 @@
 import { LaboratoryStatus, Role } from "@prisma/client";
 
-export interface SerializableSoftware {
-  id: string;
-  name: string;
-  version: string;
-  supplier: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface SerializableLaboratorySoftware {
   softwareId: string;
   name: string;
@@ -36,11 +27,6 @@ export interface LaboratoryFiltersState {
   availableTo?: string;
   softwareIds: string[];
 }
-
-export type ActionState = {
-  status: "idle" | "success" | "error";
-  message?: string;
-};
 
 export const LAB_MANAGER_ROLES: Role[] = [Role.ADMIN, Role.TECHNICIAN];
 

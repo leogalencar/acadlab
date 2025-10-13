@@ -3,12 +3,9 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { LaboratoryFilters } from "@/features/lab-management/components/laboratory-filters";
-import { LaboratoryManagementView } from "@/features/lab-management/components/laboratory-management-view";
-import {
-  buildFiltersState,
-  getLaboratoriesWithFilters,
-  getSoftwareCatalog,
-} from "@/features/lab-management/server/queries";
+import { LaboratoriesClient } from "@/features/lab-management/components/laboratories-client";
+import { buildFiltersState, getLaboratoriesWithFilters } from "@/features/lab-management/server/queries";
+import { getSoftwareCatalog } from "@/features/software-management/server/queries";
 
 export const metadata: Metadata = {
   title: "Laboratórios • AcadLab",
@@ -27,7 +24,7 @@ export default async function LaboratoriesPage({
   const session = await auth();
 
   if (!session?.user) {
-    redirect("/login?callbackUrl=/dashboard/laboratories");
+    redirect("/login?callbackUrl=/laboratories");
   }
 
   const resolvedParams = await resolveSearchParams(searchParams);
@@ -56,11 +53,10 @@ export default async function LaboratoriesPage({
 
       <LaboratoryFilters filters={filters} softwareOptions={softwareCatalog} />
 
-      <LaboratoryManagementView
+      <LaboratoriesClient
         actorRole={session.user.role}
         laboratories={laboratories}
         softwareCatalog={softwareCatalog}
-        filters={filters}
       />
     </div>
   );

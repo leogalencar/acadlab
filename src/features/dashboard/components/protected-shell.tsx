@@ -169,7 +169,7 @@ function buildBreadcrumbItems(segments: string[]) {
     dashboard: "Painel",
     laboratories: "Laboratórios",
     scheduling: "Agenda",
-    software: "Software",
+    software: "Softwares",
     profile: "Meu perfil",
     users: "Usuários",
   };

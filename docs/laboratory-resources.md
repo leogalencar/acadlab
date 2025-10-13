@@ -1,7 +1,7 @@
 # Gestão de Laboratórios e Recursos
 
 ## Status
-Módulo em planejamento (“Em breve”). As diretrizes abaixo ajudam a preparar cenários de teste quando o recurso for ativado.
+Módulo disponível. As instruções abaixo auxiliam na validação do fluxo de cadastro e consulta.
 
 ## Contas de mock geradas pela seed
 - **Administrador**: `admin@acadlab.local`
@@ -17,11 +17,12 @@ Módulo em planejamento (“Em breve”). As diretrizes abaixo ajudam a preparar
 5. Inicie `npm run dev`.
 6. Autentique-se com a conta de administrador ou técnico.
 
-## Checklist provisório
-- Confirme que o card “Gestão de Laboratórios e Recursos” aparece apenas para administradores e técnicos e está marcado como “Em breve”.
-- Verifique que o breadcrumb exibe corretamente “Laboratórios” ao acessar `/dashboard/laboratories` (quando implementado).
-- Prepare dados adicionais relevantes (laboratórios, recursos) em scripts separados para quando o módulo estiver disponível.
+## Checklist de validação
+- Confirme que o card “Gestão de Laboratórios e Recursos” direciona para `/laboratories` e está disponível para todos os perfis.
+- Valide que a tabela lista os laboratórios cadastrados e suporta filtros por disponibilidade e softwares instalados.
+- Clique em uma linha e verifique que os detalhes do laboratório aparecem em um modal. Técnicos/administradores conseguem editar dados e gerenciar softwares; professores acessam o modo somente leitura.
+- Utilize o botão “Novo laboratório” para cadastrar um ambiente e confirme a atualização automática da tabela.
 
 ## Observações futuras
-- Planeje seed complementar criando laboratórios e relacionando técnicos responsáveis.
-- Documente o fluxo de criação/edição/remoção assim que as rotas de API e componentes forem entregues.
+- Adicionar demonstrações com capturas de tela quando o ambiente estiver acessível.
+- Expandir os cenários de teste cobrindo integrações com o sistema de reservas (Módulo 3).

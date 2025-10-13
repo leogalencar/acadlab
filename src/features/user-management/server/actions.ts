@@ -143,7 +143,7 @@ export async function createUserAction(
     throw error;
   }
 
-  revalidatePath("/dashboard/users");
+  revalidatePath("/users");
   revalidatePath("/dashboard");
 
   return { status: "success", message: "Usuário cadastrado com sucesso." };
@@ -242,7 +242,7 @@ export async function updateUserAction(
     throw error;
   }
 
-  revalidatePath("/dashboard/users");
+  revalidatePath("/users");
   revalidatePath("/dashboard");
 
   return { status: "success", message: "Usuário atualizado com sucesso." };
@@ -313,7 +313,7 @@ export async function deleteUserAction(formData: FormData): Promise<UserManageme
     throw error;
   }
 
-  revalidatePath("/dashboard/users");
+  revalidatePath("/users");
   revalidatePath("/dashboard");
 
   return { status: "success", message: "Usuário removido com sucesso." };

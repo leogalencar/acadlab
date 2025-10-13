@@ -4,10 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type {
-  LaboratoryFiltersState,
-  SerializableSoftware,
-} from "@/features/lab-management/types";
+import type { LaboratoryFiltersState } from "@/features/lab-management/types";
+import type { SerializableSoftware } from "@/features/software-management/types";
 
 interface LaboratoryFiltersProps {
   filters: LaboratoryFiltersState;
@@ -92,7 +90,7 @@ export function LaboratoryFilters({ filters, softwareOptions }: LaboratoryFilter
           <div className="flex flex-wrap items-center gap-3">
             <Button type="submit">Aplicar filtros</Button>
             <Link
-              href="/dashboard/laboratories"
+              href="/laboratories"
               className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
             >
               Limpar filtros

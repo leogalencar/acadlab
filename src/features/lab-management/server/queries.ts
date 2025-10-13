@@ -3,11 +3,7 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 
-import type {
-  LaboratoryFiltersState,
-  SerializableLaboratory,
-  SerializableSoftware,
-} from "@/features/lab-management/types";
+import type { LaboratoryFiltersState, SerializableLaboratory } from "@/features/lab-management/types";
 
 interface GetLaboratoriesOptions {
   availableFrom?: Date;
@@ -76,24 +72,6 @@ export async function getLaboratoriesWithFilters({
       installedById: association.installedBy?.id ?? null,
     })),
     isAvailableForSelectedRange: Boolean(availableFrom && availableTo),
-  }));
-}
-
-export async function getSoftwareCatalog(): Promise<SerializableSoftware[]> {
-  const softwareList = await prisma.software.findMany({
-    orderBy: [
-      { name: "asc" },
-      { version: "asc" },
-    ],
-  });
-
-  return softwareList.map((software) => ({
-    id: software.id,
-    name: software.name,
-    version: software.version,
-    supplier: software.supplier,
-    createdAt: software.createdAt.toISOString(),
-    updatedAt: software.updatedAt.toISOString(),
   }));
 }
 

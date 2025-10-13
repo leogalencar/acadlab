@@ -14,7 +14,7 @@ export default async function UsersManagementPage() {
   const session = await auth();
 
   if (!session?.user) {
-    redirect("/login?callbackUrl=/dashboard/users");
+    redirect("/login?callbackUrl=/users");
   }
 
   const actorRole = session.user.role;
