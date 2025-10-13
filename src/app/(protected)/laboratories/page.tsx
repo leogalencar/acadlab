@@ -41,7 +41,7 @@ export default async function LaboratoriesPage({
     pagination,
   } = buildFiltersState(resolvedParams);
 
-  const [{ laboratories, total }, softwareCatalog] = await Promise.all([
+  const [{ laboratories, total }, softwareCatalogResult] = await Promise.all([
     getLaboratoriesWithFilters({
       availableFrom,
       availableTo,
@@ -57,6 +57,8 @@ export default async function LaboratoriesPage({
     }),
     getSoftwareCatalog(),
   ]);
+
+  const softwareCatalog = softwareCatalogResult.software;
 
   const paginationState = { ...pagination, total };
 
