@@ -18,7 +18,7 @@ Permitir que administradores e técnicos cadastrem, editem e removam contas de p
 6. Acesse `http://localhost:3000/login` e autentique com a conta desejada.
 
 ## Roteiro de testes rápidos
-1. Acesse `/dashboard/users` com a conta de administrador e valide:
+1. Acesse `/users` com a conta de administrador e valide:
    - Visualização da lista completa de usuários.
    - Cadastro de um novo professor (formulário “Cadastrar novo usuário”).
    - Edição de um usuário existente (alterar nome/status) e verificação do feedback visual.
@@ -27,7 +27,7 @@ Permitir que administradores e técnicos cadastrem, editem e removam contas de p
    - Apenas professores aparecem na listagem.
    - Não é possível atribuir perfis além de professor.
 3. Com a conta de professor:
-   - Tentativa de acessar `/dashboard/users` deve redirecionar para `/dashboard`.
+   - Tentativa de acessar `/users` deve redirecionar para `/dashboard`.
    - Valide que o menu lateral não exibe o módulo “Gestão de Usuários”.
 
 ## Observações

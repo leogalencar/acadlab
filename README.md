@@ -85,8 +85,9 @@ Read more in [`docs/user-management.md`](docs/user-management.md).
 
 ## Module Directory
 - **Dashboard Overview** (`/dashboard`): role-filtered list of modules. See [`docs/dashboard-overview.md`](docs/dashboard-overview.md).
-- **User Management** (`/dashboard/users`): CRUD for professor/technician/admin accounts (accessible to technicians and administrators). See [`docs/user-management.md`](docs/user-management.md).
-- **Laboratories, Scheduling, Software**: Upcoming modules with provisional docs in [`docs/laboratory-resources.md`](docs/laboratory-resources.md), [`docs/laboratory-scheduling.md`](docs/laboratory-scheduling.md), and [`docs/software-maintenance.md`](docs/software-maintenance.md).
+- **User Management** (`/users`): CRUD for professor/technician/admin accounts (acessível para técnicos e administradores). Veja [`docs/user-management.md`](docs/user-management.md).
+- **Laboratory Management** (`/laboratories`): tabela com filtros, cadastro e manutenção dos laboratórios. Detalhes em [`docs/laboratory-resources.md`](docs/laboratory-resources.md).
+- **Software Catalog** (`/software`): registro e edição do catálogo de softwares instaláveis. Veja [`docs/software-maintenance.md`](docs/software-maintenance.md).
 
 ## Contributing
 1. Review [`GIT_GUIDELINES.md`](GIT_GUIDELINES.md) and [`AGENTS.md`](AGENTS.md).
