@@ -6,7 +6,7 @@ import { LaboratoryFilters } from "@/features/lab-management/components/laborato
 import { LaboratoriesClient } from "@/features/lab-management/components/laboratories-client";
 import { buildFiltersState, getLaboratoriesWithFilters } from "@/features/lab-management/server/queries";
 import { resolveSearchParams, type SearchParamsLike } from "@/features/shared/search-params";
-import { getSoftwareCatalog } from "@/features/software-management/server/queries";
+import { getAllSoftwareOptions } from "@/features/software-management/server/queries";
 
 export const metadata: Metadata = {
   title: "Laboratórios • AcadLab",
@@ -41,7 +41,7 @@ export default async function LaboratoriesPage({
     pagination,
   } = buildFiltersState(resolvedParams);
 
-  const [{ laboratories, total }, softwareCatalogResult] = await Promise.all([
+  const [{ laboratories, total }, softwareCatalog] = await Promise.all([
     getLaboratoriesWithFilters({
       availableFrom,
       availableTo,
@@ -55,10 +55,8 @@ export default async function LaboratoriesPage({
       sorting,
       pagination,
     }),
-    getSoftwareCatalog(),
+    getAllSoftwareOptions(),
   ]);
-
-  const softwareCatalog = softwareCatalogResult.software;
 
   const paginationState = { ...pagination, total };
 

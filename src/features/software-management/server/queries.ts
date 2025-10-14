@@ -30,6 +30,26 @@ interface SoftwareCatalogResult {
   supplierOptions: string[];
 }
 
+type SoftwareRecord = {
+  id: string;
+  name: string;
+  version: string;
+  supplier: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+function serializeSoftware(record: SoftwareRecord): SerializableSoftware {
+  return {
+    id: record.id,
+    name: record.name,
+    version: record.version,
+    supplier: record.supplier,
+    createdAt: record.createdAt.toISOString(),
+    updatedAt: record.updatedAt.toISOString(),
+  };
+}
+
 const DEFAULT_GET_SOFTWARE_CATALOG_OPTIONS: GetSoftwareCatalogOptions = {
   suppliers: [],
   sorting: { sortBy: "name", sortOrder: "asc" },
@@ -127,16 +147,17 @@ export async function getSoftwareCatalog({
     .map((record) => record.supplier)
     .filter((value): value is string => Boolean(value));
 
-  const software = softwareList.map((item) => ({
-    id: item.id,
-    name: item.name,
-    version: item.version,
-    supplier: item.supplier,
-    createdAt: item.createdAt.toISOString(),
-    updatedAt: item.updatedAt.toISOString(),
-  }));
+  const software = softwareList.map(serializeSoftware);
 
   return { software, total, supplierOptions };
+}
+
+export async function getAllSoftwareOptions(): Promise<SerializableSoftware[]> {
+  const records = await prisma.software.findMany({
+    orderBy: [{ name: "asc" }, { version: "asc" }],
+  });
+
+  return records.map(serializeSoftware);
 }
 
 export function buildSoftwareFiltersState(
