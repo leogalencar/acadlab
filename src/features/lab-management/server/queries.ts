@@ -90,8 +90,8 @@ export async function getLaboratoriesWithFilters({
   if (searchTerm) {
     conditions.push({
       OR: [
-        { name: { contains: searchTerm, mode: "insensitive" } },
-        { description: { contains: searchTerm, mode: "insensitive" } },
+        { name: { contains: searchTerm } },
+        { description: { contains: searchTerm } },
       ],
     });
   }
@@ -187,6 +187,8 @@ export function buildFiltersState(
   minCapacity?: number;
   maxCapacity?: number;
   searchTerm?: string;
+  updatedFrom?: Date;
+  updatedTo?: Date;
   sorting: LaboratorySortingState;
   pagination: LaboratoryPaginationState;
 } {

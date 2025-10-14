@@ -71,9 +71,9 @@ export async function getSoftwareCatalog({
   if (searchTerm) {
     conditions.push({
       OR: [
-        { name: { contains: searchTerm, mode: "insensitive" } },
-        { version: { contains: searchTerm, mode: "insensitive" } },
-        { supplier: { contains: searchTerm, mode: "insensitive" } },
+        { name: { contains: searchTerm } },
+        { version: { contains: searchTerm } },
+        { supplier: { contains: searchTerm } },
       ],
     });
   }
@@ -168,6 +168,8 @@ export function buildSoftwareFiltersState(
   suppliers: string[];
   updatedFrom?: Date;
   updatedTo?: Date;
+  createdFrom?: Date;
+  createdTo?: Date;
   sorting: SoftwareSortingState;
   pagination: SoftwarePaginationState;
 } {

@@ -46,7 +46,7 @@ Read more in [`docs/user-management.md`](docs/user-management.md).
 ## Local Setup
 1. **Clone the repository** and `cd` into it.
 2. **Configure environment variables** (copy `.env.example` if available or define values such as `DATABASE_URL`, `ADMIN_EMAIL`, etc.).
-3. **Install dependencies**:
+3. **Install dependencies** (this automatically generates the Prisma client via the `postinstall` hook):
    ```bash
    pnpm install
    ```
@@ -75,13 +75,14 @@ Read more in [`docs/user-management.md`](docs/user-management.md).
 |------------------------|---------------------------------------------------------------------------------|
 | `pnpm dev`             | Starts the development server (Turbopack)                                      |
 | `pnpm lint`            | Runs ESLint using the flat configuration                                       |
-| `pnpm build`           | Creates a production build (`--turbopack`) **⚠️ fails without access to Google Fonts** |
+| `pnpm build`           | Creates a production build (`--turbopack`). Runs the `prebuild` hook to regenerate the Prisma client. |
 | `pnpm start`           | Serves the production build (requires `pnpm build`)                            |
 | `pnpm prisma studio`   | Opens Prisma Studio for database inspection                                    |
 | `pnpm prisma db seed`  | Reapplies mock users (and future seed data)                                    |
 
-### Known Limitation
-`pnpm build` may fail in network-restricted environments because Next.js attempts to fetch Geist fonts from `fonts.googleapis.com`. Use `pnpm dev` instead or adjust the font configuration when running offline.
+### Notes on Prisma Generation Hooks
+- `pnpm install` runs `prisma generate` via the `postinstall` hook, so local development always has an up-to-date Prisma client.
+- `pnpm build` runs the same generator through the `prebuild` hook before compiling to avoid missing client issues in CI or production builds.
 
 ## Module Directory
 - **Dashboard Overview** (`/dashboard`): role-filtered list of modules. See [`docs/dashboard-overview.md`](docs/dashboard-overview.md).

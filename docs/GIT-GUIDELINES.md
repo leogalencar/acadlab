@@ -121,3 +121,11 @@ git push origin --delete feature/payment-integration
 | `feature/*` | **Squash** | ✅ Yes                | `develop`          | ✅ Yes       | New features                 |
 | `bugfix/*`  | **Squash** | ✅ Yes                | `develop`          | ✅ Yes       | Non-critical fixes           |
 | `hotfix/*`  | **Squash** | ✅ Yes                | `develop` / `main` | ✅ Yes       | Urgent production fixes      |
+
+---
+
+## Prisma Client Automation
+
+- `pnpm install` triggers the `postinstall` script, which runs `prisma generate` so that every local environment has an up-to-date client immediately after installing dependencies.
+- `pnpm build` triggers the `prebuild` script, repeating `prisma generate` to guarantee that CI pipelines and production builds compile with the latest schema.
+- Because of these hooks, running `pnpm build` is required before opening a pull request—this single command verifies both type safety and Prisma readiness.
