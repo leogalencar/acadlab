@@ -572,7 +572,7 @@ function UserDetails({ user }: { user: SerializableUser }) {
 
 function getAssignableRoles(actorRole: Role, currentRole?: Role): Role[] {
   if (actorRole === Role.ADMIN) {
-    const roles = [Role.ADMIN, Role.TECHNICIAN, Role.PROFESSOR];
+    const roles = [Role.PROFESSOR, Role.TECHNICIAN, Role.ADMIN];
     return currentRole && !roles.includes(currentRole) ? [...roles, currentRole] : roles;
   }
 
