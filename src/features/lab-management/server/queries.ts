@@ -187,6 +187,8 @@ export function buildFiltersState(
   minCapacity?: number;
   maxCapacity?: number;
   searchTerm?: string;
+  updatedFrom?: Date;
+  updatedTo?: Date;
   sorting: LaboratorySortingState;
   pagination: LaboratoryPaginationState;
 } {
