@@ -24,6 +24,12 @@ interface GetSoftwareCatalogOptions {
   pagination: { page: number; perPage: number };
 }
 
+interface SoftwareCatalogResult {
+  software: SerializableSoftware[];
+  total: number;
+  supplierOptions: string[];
+}
+
 const DEFAULT_GET_SOFTWARE_CATALOG_OPTIONS: GetSoftwareCatalogOptions = {
   suppliers: [],
   sorting: { sortBy: "name", sortOrder: "asc" },
@@ -39,11 +45,7 @@ export async function getSoftwareCatalog({
   createdTo,
   sorting,
   pagination,
-}: GetSoftwareCatalogOptions = DEFAULT_GET_SOFTWARE_CATALOG_OPTIONS): Promise<{
-  software: SerializableSoftware[];
-  total: number;
-  supplierOptions: string[];
-}> {
+}: GetSoftwareCatalogOptions = DEFAULT_GET_SOFTWARE_CATALOG_OPTIONS): Promise<SoftwareCatalogResult> {
   const conditions: Prisma.SoftwareWhereInput[] = [];
 
   if (searchTerm) {

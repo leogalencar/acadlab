@@ -38,10 +38,7 @@ export default async function UsersManagementPage({
     searchTerm,
     roles,
     statuses,
-    createdFrom,
-    createdTo,
-    updatedFrom,
-    updatedTo,
+    dateFilters,
     sorting,
     pagination,
   } = buildUserFiltersState(resolvedParams);
@@ -51,10 +48,7 @@ export default async function UsersManagementPage({
     searchTerm,
     roles,
     statuses,
-    createdFrom,
-    createdTo,
-    updatedFrom,
-    updatedTo,
+    ...dateFilters,
     sorting,
     pagination,
   });

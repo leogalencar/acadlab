@@ -13,15 +13,18 @@ import { DEFAULT_PAGE_SIZE } from "@/features/shared/table";
 
 const USER_SORT_FIELDS: UserSortField[] = ["name", "email", "role", "status", "updatedAt"];
 
-interface GetUsersOptions {
-  actorRole: Role;
-  searchTerm?: string;
-  roles: Role[];
-  statuses: UserStatus[];
+interface UserDateFilters {
   createdFrom?: Date;
   createdTo?: Date;
   updatedFrom?: Date;
   updatedTo?: Date;
+}
+
+interface GetUsersOptions extends UserDateFilters {
+  actorRole: Role;
+  searchTerm?: string;
+  roles: Role[];
+  statuses: UserStatus[];
   sorting: UserSortingState;
   pagination: { page: number; perPage: number };
 }
@@ -133,16 +136,19 @@ export async function getUsersWithFilters({
   };
 }
 
-export function buildUserFiltersState(
-  params: Record<string, string | string[] | undefined>,
-): {
+interface BuildUserFiltersStateResult {
   filters: UserFiltersState;
   searchTerm?: string;
   roles: Role[];
   statuses: UserStatus[];
+  dateFilters: UserDateFilters;
   sorting: UserSortingState;
   pagination: UserPaginationState;
-} {
+}
+
+export function buildUserFiltersState(
+  params: Record<string, string | string[] | undefined>,
+): BuildUserFiltersStateResult {
   const searchRaw = getFirst(params["search"]);
   const rolesRaw = params["role"];
   const statusesRaw = params["status"];
@@ -203,10 +209,12 @@ export function buildUserFiltersState(
     searchTerm,
     roles,
     statuses,
-    createdFrom,
-    createdTo,
-    updatedFrom,
-    updatedTo,
+    dateFilters: {
+      createdFrom,
+      createdTo,
+      updatedFrom,
+      updatedTo,
+    },
     sorting,
     pagination,
   };

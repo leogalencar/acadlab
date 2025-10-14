@@ -329,7 +329,8 @@ function SortableHeader({ label, field, sorting, onSort, alignment = "left" }: S
   const iconRotation = isActive && sorting.sortOrder === "desc" ? "rotate-180" : "";
 
   return (
-    <th className={cn("p-3", alignment === "right" ? "text-right" : "text-left")}
+    <th
+      className={cn("p-3", alignment === "right" ? "text-right" : "text-left")}
       scope="col"
       aria-sort={isActive ? (sorting.sortOrder === "asc" ? "ascending" : "descending") : "none"}
     >
