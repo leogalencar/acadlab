@@ -78,17 +78,14 @@ pnpm lint
 - Currently shows 1 warning (unused Button import in page.tsx)
 - Exit code 0 even with warnings
 
-### Production Build (NETWORK RESTRICTED):
+### Production Build (REQUIRED VALIDATION):
 ```bash
 pnpm build
 # Equivalent to: next build --turbopack
 ```
-- **⚠️ KNOWN ISSUE**: Build fails in network-restricted environments
-- Error: Cannot fetch Google Fonts (Geist, Geist Mono) from fonts.googleapis.com
-- Failure occurs during font optimization in `src/app/layout.tsx`
-- This is an ENVIRONMENT limitation, not a code issue
-- The build works in environments with internet access
-- **Alternative**: Use `pnpm dev` for development/testing instead
+- **Always run this command before shipping changes.**
+- The build now uses system fonts only and succeeds without network access.
+- The `prebuild` hook automatically regenerates the Prisma client, so no extra steps are needed beforehand.
 
 ### Start Production Server:
 ```bash
@@ -138,8 +135,8 @@ pnpm start
 1. **Always** run `pnpm install` first if starting fresh
 2. Make your changes to files in `src/`
 3. Run `pnpm lint` to check for linting errors
-4. Run `pnpm dev` to test locally
-5. For production validation, try `pnpm build` (may fail due to fonts)
+4. Run `pnpm build` to validate type safety and Prisma generation
+5. Run `pnpm dev` to perform any interactive validation as needed
 
 ### Adding New Features:
 1. Create a new folder in `./src/features/` for your feature
@@ -183,25 +180,16 @@ npx shadcn@latest add <component-name>
 
 **Validation Checklist:**
 1. Run `pnpm lint` - should pass with 0 errors
-2. Run `pnpm dev` - should start without errors
-3. Open browser to http://localhost:3000 - page should load
-4. Check browser console for runtime errors
+2. Run `pnpm build` - ensures type-checking and Prisma client generation succeed
+3. Run `pnpm dev` - should start without errors
+4. Open browser to http://localhost:3000 - page should load
+5. Check browser console for runtime errors
 
 ## Known Issues & Workarounds
 
-### Issue 1: Build Fails with Font Error
-**Problem**: `pnpm build` fails with "Failed to fetch Geist from Google Fonts"
+- No current build blockers. The previous Google Fonts limitation has been removed; offline builds succeed with the system font stack.
 
-**Root Cause**: Network restrictions prevent accessing fonts.googleapis.com
-
-**Workaround Options**:
-1. Use `pnpm dev` for development and testing (recommended)
-2. Remove Google Fonts and use system fonts (if acceptable for task)
-3. Run build in environment with internet access
-
-**Not a Bug**: This is an environment limitation, not a code issue
-
-### Issue 2: Unused Import Warning
+### ESLint Warning: Unused Button Import
 **Current State**: `src/app/page.tsx` imports Button but doesn't use it
 
 **Impact**: ESLint warning (not error), doesn't block development
