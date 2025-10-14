@@ -5,21 +5,19 @@ import { auth } from "@/auth";
 import { LaboratoryFilters } from "@/features/lab-management/components/laboratory-filters";
 import { LaboratoriesClient } from "@/features/lab-management/components/laboratories-client";
 import { buildFiltersState, getLaboratoriesWithFilters } from "@/features/lab-management/server/queries";
-import { getSoftwareCatalog } from "@/features/software-management/server/queries";
+import { resolveSearchParams, type SearchParamsLike } from "@/features/shared/search-params";
+import { getAllSoftwareOptions } from "@/features/software-management/server/queries";
 
 export const metadata: Metadata = {
   title: "Laboratórios • AcadLab",
 };
 
-type SearchParams =
-  | Record<string, string | string[] | undefined>
-  | Promise<Record<string, string | string[] | undefined>>
-  | undefined;
+type LaboratoriesSearchParams = Record<string, string | string[] | undefined>;
 
 export default async function LaboratoriesPage({
   searchParams,
 }: {
-  searchParams?: SearchParams;
+  searchParams?: SearchParamsLike<LaboratoriesSearchParams>;
 }) {
   const session = await auth();
 
@@ -27,17 +25,40 @@ export default async function LaboratoriesPage({
     redirect("/login?callbackUrl=/laboratories");
   }
 
-  const resolvedParams = await resolveSearchParams(searchParams);
-  const { filters, availableFrom, availableTo, softwareIds } = buildFiltersState(resolvedParams);
+  const resolvedParams = await resolveSearchParams<LaboratoriesSearchParams>(searchParams);
+  const {
+    filters,
+    availableFrom,
+    availableTo,
+    softwareIds,
+    statuses,
+    minCapacity,
+    maxCapacity,
+    searchTerm,
+    updatedFrom,
+    updatedTo,
+    sorting,
+    pagination,
+  } = buildFiltersState(resolvedParams);
 
-  const [laboratories, softwareCatalog] = await Promise.all([
+  const [{ laboratories, total }, softwareCatalog] = await Promise.all([
     getLaboratoriesWithFilters({
       availableFrom,
       availableTo,
       softwareIds,
+      statuses,
+      minCapacity,
+      maxCapacity,
+      searchTerm,
+      updatedFrom,
+      updatedTo,
+      sorting,
+      pagination,
     }),
-    getSoftwareCatalog(),
+    getAllSoftwareOptions(),
   ]);
+
+  const paginationState = { ...pagination, total };
 
   return (
     <div className="space-y-8">
@@ -51,25 +72,21 @@ export default async function LaboratoriesPage({
         </div>
       </header>
 
-      <LaboratoryFilters filters={filters} softwareOptions={softwareCatalog} />
+      <LaboratoryFilters
+        filters={filters}
+        sorting={sorting}
+        softwareOptions={softwareCatalog}
+        perPage={paginationState.perPage}
+      />
 
       <LaboratoriesClient
         actorRole={session.user.role}
         laboratories={laboratories}
         softwareCatalog={softwareCatalog}
+        sorting={sorting}
+        pagination={paginationState}
       />
     </div>
   );
 }
 
-async function resolveSearchParams(params: SearchParams) {
-  if (!params) {
-    return {} as Record<string, string | string[] | undefined>;
-  }
-
-  if (typeof (params as Promise<unknown>).then === "function") {
-    return ((await params) ?? {}) as Record<string, string | string[] | undefined>;
-  }
-
-  return params;
-}

@@ -4,13 +4,21 @@ import { Role } from "@prisma/client";
 
 import { auth } from "@/auth";
 import { SoftwareManagementClient } from "@/features/software-management/components/software-management-client";
-import { getSoftwareCatalog } from "@/features/software-management/server/queries";
+import { SoftwareFilters } from "@/features/software-management/components/software-filters";
+import { buildSoftwareFiltersState, getSoftwareCatalog } from "@/features/software-management/server/queries";
+import { resolveSearchParams, type SearchParamsLike } from "@/features/shared/search-params";
 
 export const metadata: Metadata = {
   title: "Catálogo de softwares • AcadLab",
 };
 
-export default async function SoftwarePage() {
+type SoftwareSearchParams = Record<string, string | string[] | undefined>;
+
+export default async function SoftwarePage({
+  searchParams,
+}: {
+  searchParams?: SearchParamsLike<SoftwareSearchParams>;
+}) {
   const session = await auth();
 
   if (!session?.user) {
@@ -21,7 +29,32 @@ export default async function SoftwarePage() {
     redirect("/dashboard");
   }
 
-  const software = await getSoftwareCatalog();
+  const resolvedParams = await resolveSearchParams<SoftwareSearchParams>(searchParams);
+  const {
+    filters,
+    searchTerm,
+    suppliers,
+    updatedFrom,
+    updatedTo,
+    createdFrom,
+    createdTo,
+    sorting,
+    pagination,
+  } =
+    buildSoftwareFiltersState(resolvedParams);
+
+  const { software, total, supplierOptions } = await getSoftwareCatalog({
+    searchTerm,
+    suppliers,
+    updatedFrom,
+    updatedTo,
+    createdFrom,
+    createdTo,
+    sorting,
+    pagination,
+  });
+
+  const paginationState = { ...pagination, total };
 
   return (
     <div className="space-y-8">
@@ -35,7 +68,18 @@ export default async function SoftwarePage() {
         </div>
       </header>
 
-      <SoftwareManagementClient software={software} />
+      <SoftwareFilters
+        filters={filters}
+        sorting={sorting}
+        supplierOptions={supplierOptions}
+        perPage={paginationState.perPage}
+      />
+
+      <SoftwareManagementClient
+        software={software}
+        sorting={sorting}
+        pagination={paginationState}
+      />
     </div>
   );
 }

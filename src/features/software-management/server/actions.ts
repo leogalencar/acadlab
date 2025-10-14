@@ -6,11 +6,11 @@ import { Prisma, Role } from "@prisma/client";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { MANAGER_ROLES } from "@/features/shared/roles";
 import type { ActionState } from "@/features/shared/types";
-const SOFTWARE_MANAGER_ROLES: Role[] = [Role.ADMIN, Role.TECHNICIAN];
 
 function canManageSoftware(role: Role): boolean {
-  return SOFTWARE_MANAGER_ROLES.includes(role);
+  return MANAGER_ROLES.includes(role);
 }
 
 const notAuthenticated: ActionState = {

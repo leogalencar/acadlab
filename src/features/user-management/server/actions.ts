@@ -8,6 +8,7 @@ import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { Role, UserStatus } from "@prisma/client";
+import { MANAGER_ROLES } from "@/features/shared/roles";
 
 export type UserManagementActionState = {
   status: "idle" | "success" | "error";
@@ -320,7 +321,7 @@ export async function deleteUserAction(formData: FormData): Promise<UserManageme
 }
 
 function canManageUsers(role: Role) {
-  return role === Role.ADMIN || role === Role.TECHNICIAN;
+  return MANAGER_ROLES.includes(role);
 }
 
 function canManageRole(actorRole: Role, targetRole: Role) {
