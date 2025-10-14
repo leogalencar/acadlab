@@ -25,7 +25,10 @@ export default async function SoftwarePage({
     redirect("/login?callbackUrl=/software");
   }
 
-  if (![Role.ADMIN, Role.TECHNICIAN].includes(session.user.role)) {
+  const canManageSoftware =
+    session.user.role === Role.ADMIN || session.user.role === Role.TECHNICIAN;
+
+  if (!canManageSoftware) {
     redirect("/dashboard");
   }
 
