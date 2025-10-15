@@ -144,7 +144,7 @@ export async function createUserAction(
     await prisma.user.create({
       data: {
         name: parsed.data.name.trim(),
-        email: parsed.data.email,
+        email: parsed.data.email.toLowerCase(),
         role: parsed.data.role,
         status: UserStatus.ACTIVE,
         passwordHash: await hash(parsed.data.password, 12),
