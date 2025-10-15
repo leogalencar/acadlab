@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { Plus, Trash2 } from "lucide-react";
 
@@ -15,9 +15,18 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PERIOD_IDS, type PeriodId } from "@/features/system-rules/constants";
+import {
+  DEFAULT_COLOR_RULES,
+  DEFAULT_PERIOD_RULES_MINUTES,
+  PERIOD_IDS,
+  type PeriodId,
+} from "@/features/system-rules/constants";
 import { updateSystemRulesAction } from "@/features/system-rules/server/actions";
 import type { SerializableSystemRules } from "@/features/system-rules/types";
+import {
+  buildPaletteCssVariables,
+  formatMinutesToTime,
+} from "@/features/system-rules/utils";
 
 const FORM_INITIAL_STATE = { status: "idle" as const };
 
@@ -59,6 +68,16 @@ type PeriodIntervalsState = Record<PeriodId, IntervalFormState[]>;
 
 type IntervalField = keyof Pick<IntervalFormState, "start" | "durationMinutes">;
 
+interface PeriodFieldState {
+  firstClassTime: string;
+  classDurationMinutes: string;
+  classesCount: string;
+}
+
+type PeriodFieldsState = Record<PeriodId, PeriodFieldState>;
+
+type PeriodFieldKey = keyof PeriodFieldState;
+
 export function SystemRulesForm({ rules }: SystemRulesFormProps) {
   const [state, formAction] = useFormState(updateSystemRulesAction, FORM_INITIAL_STATE);
 
@@ -66,11 +85,81 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
   const [intervalsByPeriod, setIntervalsByPeriod] = useState<PeriodIntervalsState>(() =>
     createIntervalsState(rules),
   );
+  const [periodFields, setPeriodFields] = useState<PeriodFieldsState>(() =>
+    createPeriodFieldsState(rules),
+  );
+
+  const paletteBaseRef = useRef<Record<string, string> | null>(null);
 
   useEffect(() => {
     setColors(createColorState(rules));
     setIntervalsByPeriod(createIntervalsState(rules));
+    setPeriodFields(createPeriodFieldsState(rules));
   }, [rules]);
+
+  useEffect(() => {
+    if (paletteBaseRef.current) {
+      return;
+    }
+
+    paletteBaseRef.current = buildPaletteCssVariables({
+      primaryColor: rules.primaryColor,
+      secondaryColor: rules.secondaryColor,
+      accentColor: rules.accentColor,
+    });
+  }, [rules]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const style = document.body?.style;
+
+    if (!style) {
+      return;
+    }
+
+    const palette = buildPaletteCssVariables({
+      primaryColor: colors.primary,
+      secondaryColor: colors.secondary,
+      accentColor: colors.accent,
+    });
+
+    Object.entries(palette).forEach(([property, value]) => {
+      style.setProperty(property, value);
+    });
+  }, [colors]);
+
+  useEffect(() => {
+    return () => {
+      if (typeof document === "undefined") {
+        return;
+      }
+
+      const style = document.body?.style;
+
+      if (!style || !paletteBaseRef.current) {
+        return;
+      }
+
+      Object.entries(paletteBaseRef.current).forEach(([property, value]) => {
+        style.setProperty(property, value);
+      });
+    };
+  }, []);
+
+  useEffect(() => {
+    if (state.status !== "success") {
+      return;
+    }
+
+    paletteBaseRef.current = buildPaletteCssVariables({
+      primaryColor: colors.primary,
+      secondaryColor: colors.secondary,
+      accentColor: colors.accent,
+    });
+  }, [state.status, colors]);
 
   const lastUpdatedLabel = useMemo(() => {
     if (!rules.updatedAt) {
@@ -95,6 +184,20 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
     }));
   };
 
+  const handlePeriodFieldChange = (
+    period: PeriodId,
+    field: PeriodFieldKey,
+    value: string,
+  ) => {
+    setPeriodFields((previous) => ({
+      ...previous,
+      [period]: {
+        ...previous[period],
+        [field]: value,
+      },
+    }));
+  };
+
   const handleIntervalChange = (
     period: PeriodId,
     intervalId: string,
@@ -114,9 +217,12 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
       const existing = previous[period];
       const lastInterval = existing.at(-1);
 
+      const firstClassTime = periodFields[period]?.firstClassTime ??
+        rules.periods[period].firstClassTime;
+
       const nextInterval: IntervalFormState = {
         id: generateIntervalId(period),
-        start: lastInterval?.start ?? rules.periods[period].firstClassTime,
+        start: lastInterval?.start ?? firstClassTime,
         durationMinutes: lastInterval?.durationMinutes ?? "15",
       };
 
@@ -134,14 +240,41 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
     }));
   };
 
+  const handleRestoreColors = () => {
+    setColors(createDefaultColorState());
+  };
+
+  const handleRestorePeriod = (period: PeriodId) => {
+    setPeriodFields((previous) => ({
+      ...previous,
+      [period]: createDefaultPeriodFieldState(period),
+    }));
+
+    setIntervalsByPeriod((previous) => ({
+      ...previous,
+      [period]: createDefaultIntervalsForPeriod(period),
+    }));
+  };
+
+  const handleRestoreAll = () => {
+    setColors(createDefaultColorState());
+    setPeriodFields(createDefaultPeriodFieldsState());
+    setIntervalsByPeriod(createDefaultIntervalsState());
+  };
+
   return (
     <form className="space-y-8" action={formAction}>
       <Card>
-        <CardHeader>
-          <CardTitle className="text-xl">Identidade visual do sistema</CardTitle>
-          <CardDescription>
-            Defina as cores que serão utilizadas em botões, links e destaques da interface.
-          </CardDescription>
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1">
+            <CardTitle className="text-xl">Identidade visual do sistema</CardTitle>
+            <CardDescription>
+              Defina as cores que serão utilizadas em botões, links e destaques da interface.
+            </CardDescription>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={handleRestoreColors}>
+            Restaurar padrão de cores
+          </Button>
         </CardHeader>
         <CardContent className="grid gap-6 md:grid-cols-3">
           <ColorField
@@ -174,14 +307,24 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
       <div className="space-y-6">
         {PERIOD_IDS.map((period) => {
           const metadata = PERIOD_METADATA[period];
-          const periodRules = rules.periods[period];
+          const periodRules = periodFields[period];
           const intervalState = intervalsByPeriod[period] ?? [];
 
           return (
             <Card key={period}>
-              <CardHeader>
-                <CardTitle className="text-xl">{metadata.title}</CardTitle>
-                <CardDescription>{metadata.description}</CardDescription>
+              <CardHeader className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div className="space-y-1">
+                  <CardTitle className="text-xl">{metadata.title}</CardTitle>
+                  <CardDescription>{metadata.description}</CardDescription>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleRestorePeriod(period)}
+                >
+                  Restaurar período padrão
+                </Button>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="grid gap-4 md:grid-cols-3">
@@ -195,7 +338,10 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
                       type="time"
                       required
                       step={300}
-                      defaultValue={periodRules.firstClassTime}
+                      value={periodRules.firstClassTime}
+                      onChange={(event) =>
+                        handlePeriodFieldChange(period, "firstClassTime", event.currentTarget.value)
+                      }
                     />
                     <HelperText>
                       Informe o horário em formato 24 horas (ex.: 07:00).
@@ -212,7 +358,14 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
                       min={10}
                       max={240}
                       required
-                      defaultValue={periodRules.classDurationMinutes}
+                      value={periodRules.classDurationMinutes}
+                      onChange={(event) =>
+                        handlePeriodFieldChange(
+                          period,
+                          "classDurationMinutes",
+                          event.currentTarget.value,
+                        )
+                      }
                     />
                     <HelperText>
                       Defina a duração padronizada das aulas neste período.
@@ -229,7 +382,10 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
                       min={1}
                       max={12}
                       required
-                      defaultValue={periodRules.classesCount}
+                      value={periodRules.classesCount}
+                      onChange={(event) =>
+                        handlePeriodFieldChange(period, "classesCount", event.currentTarget.value)
+                      }
                     />
                     <HelperText>
                       Quantidade total de aulas previstas para o período.
@@ -265,7 +421,7 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-xs text-muted-foreground">
           {lastUpdatedLabel ? (
             <p>Última atualização registrada em {lastUpdatedLabel}.</p>
@@ -273,7 +429,12 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
             <p>Os ajustes são aplicados imediatamente após a confirmação.</p>
           )}
         </div>
-        <SaveButton />
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Button type="button" variant="outline" onClick={handleRestoreAll}>
+            Restaurar todas as regras
+          </Button>
+          <SaveButton />
+        </div>
       </div>
     </form>
   );
@@ -321,7 +482,14 @@ function ColorField({ id, name, label, description, value, onValueChange }: Colo
         <Input
           id={`${id}-text`}
           value={textValue}
-          onChange={(event) => setTextValue(event.currentTarget.value.toUpperCase())}
+          onChange={(event) => {
+            const nextValue = event.currentTarget.value.toUpperCase();
+            setTextValue(nextValue);
+
+            if (/^#[0-9A-F]{6}$/.test(nextValue)) {
+              onValueChange(nextValue);
+            }
+          }}
           onBlur={handleBlur}
           maxLength={7}
           spellCheck={false}
@@ -464,6 +632,14 @@ function createColorState(rules: SerializableSystemRules): ColorState {
   };
 }
 
+function createDefaultColorState(): ColorState {
+  return {
+    primary: DEFAULT_COLOR_RULES.primaryColor.toUpperCase(),
+    secondary: DEFAULT_COLOR_RULES.secondaryColor.toUpperCase(),
+    accent: DEFAULT_COLOR_RULES.accentColor.toUpperCase(),
+  };
+}
+
 function createIntervalsState(rules: SerializableSystemRules): PeriodIntervalsState {
   return PERIOD_IDS.reduce((accumulator, period) => {
     const periodRules = rules.periods[period];
@@ -476,6 +652,55 @@ function createIntervalsState(rules: SerializableSystemRules): PeriodIntervalsSt
 
     return accumulator;
   }, {} as PeriodIntervalsState);
+}
+
+function createDefaultIntervalsState(): PeriodIntervalsState {
+  return PERIOD_IDS.reduce((accumulator, period) => {
+    accumulator[period] = createDefaultIntervalsForPeriod(period);
+
+    return accumulator;
+  }, {} as PeriodIntervalsState);
+}
+
+function createDefaultIntervalsForPeriod(period: PeriodId): IntervalFormState[] {
+  const defaults = DEFAULT_PERIOD_RULES_MINUTES[period];
+
+  return defaults.intervals.map((interval) => ({
+    id: generateIntervalId(period),
+    start: formatMinutesToTime(interval.start),
+    durationMinutes: String(interval.durationMinutes),
+  }));
+}
+
+function createPeriodFieldsState(rules: SerializableSystemRules): PeriodFieldsState {
+  return PERIOD_IDS.reduce((accumulator, period) => {
+    const periodRules = rules.periods[period];
+
+    accumulator[period] = {
+      firstClassTime: periodRules.firstClassTime,
+      classDurationMinutes: String(periodRules.classDurationMinutes),
+      classesCount: String(periodRules.classesCount),
+    };
+
+    return accumulator;
+  }, {} as PeriodFieldsState);
+}
+
+function createDefaultPeriodFieldsState(): PeriodFieldsState {
+  return PERIOD_IDS.reduce((accumulator, period) => {
+    accumulator[period] = createDefaultPeriodFieldState(period);
+    return accumulator;
+  }, {} as PeriodFieldsState);
+}
+
+function createDefaultPeriodFieldState(period: PeriodId): PeriodFieldState {
+  const defaults = DEFAULT_PERIOD_RULES_MINUTES[period];
+
+  return {
+    firstClassTime: formatMinutesToTime(defaults.firstClassTime),
+    classDurationMinutes: String(defaults.classDurationMinutes),
+    classesCount: String(defaults.classesCount),
+  };
 }
 
 function generateIntervalId(period: PeriodId): string {
