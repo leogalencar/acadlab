@@ -218,49 +218,36 @@ export async function updateSystemRulesAction(
 
   const data = parsed.data;
 
+  const mapSystemRulesData = (rules: typeof data) => ({
+    primaryColor: rules.primaryColor,
+    secondaryColor: rules.secondaryColor,
+    accentColor: rules.accentColor,
+    morningFirstClassStart: rules.morning.firstClassTime,
+    morningClassDurationMinutes: rules.morning.classDurationMinutes,
+    morningClassesCount: rules.morning.classesCount,
+    morningIntervalStart: rules.morning.intervalStart,
+    morningIntervalDurationMinutes: rules.morning.intervalDurationMinutes,
+    afternoonFirstClassStart: rules.afternoon.firstClassTime,
+    afternoonClassDurationMinutes: rules.afternoon.classDurationMinutes,
+    afternoonClassesCount: rules.afternoon.classesCount,
+    afternoonIntervalStart: rules.afternoon.intervalStart,
+    afternoonIntervalDurationMinutes: rules.afternoon.intervalDurationMinutes,
+    eveningFirstClassStart: rules.evening.firstClassTime,
+    eveningClassDurationMinutes: rules.evening.classDurationMinutes,
+    eveningClassesCount: rules.evening.classesCount,
+    eveningIntervalStart: rules.evening.intervalStart,
+    eveningIntervalDurationMinutes: rules.evening.intervalDurationMinutes,
+  });
+
   try {
+    const mappedData = mapSystemRulesData(data);
+
     await prisma.systemRules.upsert({
       where: { id: SYSTEM_RULES_ID },
-      update: {
-        primaryColor: data.primaryColor,
-        secondaryColor: data.secondaryColor,
-        accentColor: data.accentColor,
-        morningFirstClassStart: data.morning.firstClassTime,
-        morningClassDurationMinutes: data.morning.classDurationMinutes,
-        morningClassesCount: data.morning.classesCount,
-        morningIntervalStart: data.morning.intervalStart,
-        morningIntervalDurationMinutes: data.morning.intervalDurationMinutes,
-        afternoonFirstClassStart: data.afternoon.firstClassTime,
-        afternoonClassDurationMinutes: data.afternoon.classDurationMinutes,
-        afternoonClassesCount: data.afternoon.classesCount,
-        afternoonIntervalStart: data.afternoon.intervalStart,
-        afternoonIntervalDurationMinutes: data.afternoon.intervalDurationMinutes,
-        eveningFirstClassStart: data.evening.firstClassTime,
-        eveningClassDurationMinutes: data.evening.classDurationMinutes,
-        eveningClassesCount: data.evening.classesCount,
-        eveningIntervalStart: data.evening.intervalStart,
-        eveningIntervalDurationMinutes: data.evening.intervalDurationMinutes,
-      },
+      update: mappedData,
       create: {
         id: SYSTEM_RULES_ID,
-        primaryColor: data.primaryColor,
-        secondaryColor: data.secondaryColor,
-        accentColor: data.accentColor,
-        morningFirstClassStart: data.morning.firstClassTime,
-        morningClassDurationMinutes: data.morning.classDurationMinutes,
-        morningClassesCount: data.morning.classesCount,
-        morningIntervalStart: data.morning.intervalStart,
-        morningIntervalDurationMinutes: data.morning.intervalDurationMinutes,
-        afternoonFirstClassStart: data.afternoon.firstClassTime,
-        afternoonClassDurationMinutes: data.afternoon.classDurationMinutes,
-        afternoonClassesCount: data.afternoon.classesCount,
-        afternoonIntervalStart: data.afternoon.intervalStart,
-        afternoonIntervalDurationMinutes: data.afternoon.intervalDurationMinutes,
-        eveningFirstClassStart: data.evening.firstClassTime,
-        eveningClassDurationMinutes: data.evening.classDurationMinutes,
-        eveningClassesCount: data.evening.classesCount,
-        eveningIntervalStart: data.evening.intervalStart,
-        eveningIntervalDurationMinutes: data.evening.intervalDurationMinutes,
+        ...mappedData,
       },
     });
   } catch (error) {
