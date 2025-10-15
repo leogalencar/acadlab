@@ -3,6 +3,7 @@
 import {
   useActionState,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -367,6 +368,7 @@ interface LaboratoryDialogProps {
 function LaboratoryDialog({ mode, open, onOpenChange, laboratory, softwareCatalog, canManage }: LaboratoryDialogProps) {
   const canEdit = mode === "edit" && canManage && Boolean(laboratory);
   const router = useRouter();
+  const quickCreateId = useId();
   const titleMap: Record<"create" | "edit" | "view", string> = {
     create: "Cadastrar laboratório",
     edit: laboratory?.name ?? "Editar laboratório",
@@ -382,6 +384,9 @@ function LaboratoryDialog({ mode, open, onOpenChange, laboratory, softwareCatalo
 
   const [deleteFeedback, setDeleteFeedback] = useState<ActionState | null>(null);
   const [isDeleting, startDeleting] = useTransition();
+  const [showQuickCreate, setShowQuickCreate] = useState(
+    () => mode === "create" && softwareCatalog.length === 0,
+  );
 
   const handleClose = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -389,6 +394,17 @@ function LaboratoryDialog({ mode, open, onOpenChange, laboratory, softwareCatalo
     }
     onOpenChange(nextOpen);
   };
+
+  useEffect(() => {
+    if (mode === "create" && softwareCatalog.length === 0) {
+      setShowQuickCreate(true);
+      return;
+    }
+
+    if (mode !== "create") {
+      setShowQuickCreate(false);
+    }
+  }, [mode, softwareCatalog.length]);
 
   const handleDelete = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -432,15 +448,35 @@ function LaboratoryDialog({ mode, open, onOpenChange, laboratory, softwareCatalo
 
         <div className="space-y-8 py-4">
           {mode !== "view" ? (
-            <LaboratoryForm
-              mode={mode}
-              laboratory={laboratory}
-              softwareCatalog={softwareCatalog}
-              onCompleted={() => {
-                router.refresh();
-                handleClose(false);
-              }}
-            />
+            <div className="space-y-4">
+              <LaboratoryForm
+                mode={mode}
+                laboratory={laboratory}
+                softwareCatalog={softwareCatalog}
+                onCompleted={() => {
+                  router.refresh();
+                  handleClose(false);
+                }}
+                quickCreate={
+                  mode === "create"
+                    ? {
+                        id: quickCreateId,
+                        open: showQuickCreate,
+                        onToggle: () => setShowQuickCreate((prev) => !prev),
+                      }
+                    : undefined
+                }
+              />
+              {mode === "create" && showQuickCreate ? (
+                <SoftwareQuickCreate
+                  id={quickCreateId}
+                  onSuccess={() => {
+                    setShowQuickCreate(false);
+                    router.refresh();
+                  }}
+                />
+              ) : null}
+            </div>
           ) : laboratory ? (
             <LaboratoryDetails laboratory={laboratory} />
           ) : null}
@@ -487,15 +523,18 @@ interface LaboratoryFormProps {
   laboratory: SerializableLaboratory | null;
   softwareCatalog: SerializableSoftware[];
   onCompleted: () => void;
+  quickCreate?: {
+    id: string;
+    open: boolean;
+    onToggle: () => void;
+  };
 }
 
-function LaboratoryForm({ mode, laboratory, softwareCatalog, onCompleted }: LaboratoryFormProps) {
+function LaboratoryForm({ mode, laboratory, softwareCatalog, onCompleted, quickCreate }: LaboratoryFormProps) {
   const [formState, formAction, isPending] = useActionState(
     mode === "create" ? createLaboratoryAction : updateLaboratoryAction,
     idleActionState,
   );
-  const router = useRouter();
-  const [showQuickCreate, setShowQuickCreate] = useState(() => softwareCatalog.length === 0);
 
   useEffect(() => {
     if (formState.status === "success") {
@@ -560,8 +599,15 @@ function LaboratoryForm({ mode, laboratory, softwareCatalog, onCompleted }: Labo
         {mode === "create" ? (
           <SoftwareSelectionField
             softwareCatalog={softwareCatalog}
-            showQuickCreate={showQuickCreate}
-            onToggleQuickCreate={() => setShowQuickCreate((prev) => !prev)}
+            quickCreate={
+              quickCreate
+                ? {
+                    open: quickCreate.open,
+                    onToggle: quickCreate.onToggle,
+                    targetId: quickCreate.id,
+                  }
+                : undefined
+            }
           />
         ) : null}
         {formState.status === "error" ? (
@@ -571,28 +617,23 @@ function LaboratoryForm({ mode, laboratory, softwareCatalog, onCompleted }: Labo
           {isPending ? "Salvando..." : mode === "create" ? "Cadastrar laboratório" : "Salvar alterações"}
         </Button>
       </form>
-      {mode === "create" && showQuickCreate ? (
-        <SoftwareQuickCreate
-          onSuccess={() => {
-            setShowQuickCreate(false);
-            router.refresh();
-          }}
-        />
-      ) : null}
     </section>
   );
 }
 
 function SoftwareSelectionField({
   softwareCatalog,
-  showQuickCreate,
-  onToggleQuickCreate,
+  quickCreate,
 }: {
   softwareCatalog: SerializableSoftware[];
-  showQuickCreate: boolean;
-  onToggleQuickCreate: () => void;
+  quickCreate?: {
+    open: boolean;
+    onToggle: () => void;
+    targetId: string;
+  };
 }) {
   const hasSoftwareOptions = softwareCatalog.length > 0;
+  const quickCreateVisible = quickCreate?.open ?? false;
 
   return (
     <fieldset className="space-y-4">
@@ -605,15 +646,18 @@ function SoftwareSelectionField({
             ? "Selecione softwares já cadastrados ou cadastre novos itens no catálogo."
             : "Nenhum software disponível ainda. Utilize o atalho para cadastrar softwares antes de concluir o registro."}
         </p>
-        <Button
-          variant="link"
-          type="button"
-          onClick={onToggleQuickCreate}
-          className="h-auto p-0 text-sm"
-          aria-expanded={showQuickCreate}
-        >
-          {showQuickCreate ? "Ocultar atalho" : "Cadastrar novo software"}
-        </Button>
+        {quickCreate ? (
+          <Button
+            variant="link"
+            type="button"
+            onClick={quickCreate.onToggle}
+            className="h-auto p-0 text-sm"
+            aria-expanded={quickCreateVisible}
+            aria-controls={quickCreate.targetId}
+          >
+            {quickCreateVisible ? "Ocultar atalho" : "Cadastrar novo software"}
+          </Button>
+        ) : null}
       </div>
       {hasSoftwareOptions ? (
         <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-border/70 bg-muted/40 p-3 text-sm">
@@ -842,10 +886,11 @@ function SoftwareAssociationSection({ laboratory, availableSoftware, canManage, 
 }
 
 interface SoftwareQuickCreateProps {
+  id?: string;
   onSuccess: () => void;
 }
 
-function SoftwareQuickCreate({ onSuccess }: SoftwareQuickCreateProps) {
+function SoftwareQuickCreate({ id, onSuccess }: SoftwareQuickCreateProps) {
   const [formState, formAction, isPending] = useActionState(createSoftwareAction, idleActionState);
 
   useEffect(() => {
@@ -855,7 +900,7 @@ function SoftwareQuickCreate({ onSuccess }: SoftwareQuickCreateProps) {
   }, [formState.status, onSuccess]);
 
   return (
-    <div className="rounded-lg border border-border/70 bg-muted/40 p-4">
+    <div id={id} className="rounded-lg border border-border/70 bg-muted/40 p-4">
       <p className="text-sm font-medium text-foreground">Cadastrar novo software</p>
       <p className="text-xs text-muted-foreground">
         O software será adicionado ao catálogo geral e poderá ser associado a qualquer laboratório.
