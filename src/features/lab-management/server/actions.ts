@@ -37,10 +37,7 @@ const laboratoryDetailsSchema = z.object({
 });
 
 const createLaboratorySchema = laboratoryDetailsSchema.extend({
-  softwareIds: z
-    .array(z.string().min(1))
-    .optional()
-    .transform((ids) => (ids ? Array.from(new Set(ids)) : [])),
+  softwareIds: z.array(z.string().min(1)).optional(),
 });
 
 const updateLaboratorySchema = laboratoryDetailsSchema.extend({
@@ -87,7 +84,8 @@ export async function createLaboratoryAction(
     return { status: "error", message };
   }
 
-  const { softwareIds, ...laboratoryData } = parsed.data;
+  const { softwareIds: submittedSoftwareIds, ...laboratoryData } = parsed.data;
+  const softwareIds = Array.from(new Set(submittedSoftwareIds ?? []));
   const sessionUserId = session.user.id;
 
   if (softwareIds.length > 0) {

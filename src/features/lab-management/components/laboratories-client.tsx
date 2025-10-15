@@ -43,6 +43,11 @@ const LAB_STATUS_STYLES: Record<LaboratoryStatus, string> = {
   [LaboratoryStatus.INACTIVE]: "bg-muted text-muted-foreground border-muted-foreground/30",
 };
 
+const shouldAutoOpenQuickCreate = (
+  mode: "create" | "edit" | "view",
+  softwareCount: number,
+) => mode === "create" && softwareCount === 0;
+
 interface LaboratoriesClientProps {
   actorRole: Role;
   laboratories: SerializableLaboratory[];
@@ -384,8 +389,8 @@ function LaboratoryDialog({ mode, open, onOpenChange, laboratory, softwareCatalo
 
   const [deleteFeedback, setDeleteFeedback] = useState<ActionState | null>(null);
   const [isDeleting, startDeleting] = useTransition();
-  const [showQuickCreate, setShowQuickCreate] = useState(
-    () => mode === "create" && softwareCatalog.length === 0,
+  const [showQuickCreate, setShowQuickCreate] = useState(() =>
+    shouldAutoOpenQuickCreate(mode, softwareCatalog.length),
   );
 
   const handleClose = (nextOpen: boolean) => {
@@ -396,7 +401,7 @@ function LaboratoryDialog({ mode, open, onOpenChange, laboratory, softwareCatalo
   };
 
   useEffect(() => {
-    if (mode === "create" && softwareCatalog.length === 0) {
+    if (shouldAutoOpenQuickCreate(mode, softwareCatalog.length)) {
       setShowQuickCreate(true);
       return;
     }
@@ -643,8 +648,10 @@ function SoftwareSelectionField({
 }) {
   const hasSoftwareOptions = softwareCatalog.length > 0;
   const quickCreateVisible = quickCreate?.open ?? false;
-  const quickCreateSection = quickCreate
-    ? quickCreateVisible
+  let quickCreateSection: ReactNode = null;
+
+  if (quickCreate) {
+    quickCreateSection = quickCreateVisible
       ? quickCreate.render()
       : (
           <div
@@ -652,8 +659,8 @@ function SoftwareSelectionField({
             className="hidden"
             aria-hidden="true"
           />
-        )
-    : null;
+        );
+  }
 
   return (
     <fieldset className="space-y-4">
