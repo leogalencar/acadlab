@@ -4,6 +4,28 @@ import { hash } from "bcryptjs";
 const prisma = new PrismaClient();
 
 const FALLBACK_PASSWORD = "ChangeMe123!";
+const SYSTEM_RULES_ID = "acadlab-system-rules";
+
+const DEFAULT_SYSTEM_RULES = {
+  primaryColor: "#1D4ED8",
+  secondaryColor: "#1E293B",
+  accentColor: "#F97316",
+  morningFirstClassStart: 7 * 60,
+  morningClassDurationMinutes: 50,
+  morningClassesCount: 6,
+  morningIntervalStart: 9 * 60 + 50,
+  morningIntervalDurationMinutes: 20,
+  afternoonFirstClassStart: 13 * 60,
+  afternoonClassDurationMinutes: 50,
+  afternoonClassesCount: 5,
+  afternoonIntervalStart: 15 * 60 + 40,
+  afternoonIntervalDurationMinutes: 15,
+  eveningFirstClassStart: 18 * 60 + 30,
+  eveningClassDurationMinutes: 50,
+  eveningClassesCount: 4,
+  eveningIntervalStart: 19 * 60 + 20,
+  eveningIntervalDurationMinutes: 10,
+};
 
 type EnsureUserOptions = {
   email: string;
@@ -170,6 +192,19 @@ async function ensureAdmin() {
   }
 }
 
+async function ensureSystemRules() {
+  await prisma.systemRules.upsert({
+    where: { id: SYSTEM_RULES_ID },
+    update: {},
+    create: {
+      id: SYSTEM_RULES_ID,
+      ...DEFAULT_SYSTEM_RULES,
+    },
+  });
+
+  console.log("[seed] System rules configured.");
+}
+
 async function main() {
   await ensureAdmin();
   await ensureRoleUser({
@@ -188,6 +223,7 @@ async function main() {
     role: Role.PROFESSOR,
     logLabel: "professor",
   });
+  await ensureSystemRules();
 }
 
 main()
