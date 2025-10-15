@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { ConfirmationDialog } from "@/features/shared/components/confirmation-dialog";
 import { PAGE_SIZE_OPTIONS } from "@/features/shared/table";
 import {
   createUserAction,
@@ -332,12 +333,21 @@ function UserDialog({
   const router = useRouter();
   const [deleteFeedback, setDeleteFeedback] = useState<UserManagementActionState>(initialActionState);
   const [isDeleting, startDeleting] = useTransition();
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const handleClose = (nextOpen: boolean) => {
     if (!nextOpen) {
       setDeleteFeedback(initialActionState);
+      setIsDeleteDialogOpen(false);
     }
     onOpenChange(nextOpen);
+  };
+
+  const requestDelete = () => {
+    if (!user || !canDelete) {
+      return;
+    }
+    setIsDeleteDialogOpen(true);
   };
 
   const canDelete = mode === "edit" && user ? canManageRole(actorRole, user.role) : false;
@@ -347,9 +357,7 @@ function UserDialog({
       return;
     }
 
-    if (!window.confirm(`Remover o usuário ${user.name}? Esta ação não pode ser desfeita.`)) {
-      return;
-    }
+    setIsDeleteDialogOpen(false);
 
     const formData = new FormData();
     formData.append("userId", user.id);
@@ -410,7 +418,7 @@ function UserDialog({
               <Button
                 type="button"
                 variant="destructive"
-                onClick={handleDelete}
+                onClick={requestDelete}
                 disabled={!canDelete || isDeleting}
               >
                 {isDeleting ? "Removendo..." : "Remover usuário"}
@@ -418,6 +426,16 @@ function UserDialog({
               {deleteFeedback.status === "error" ? (
                 <p className="text-sm text-destructive">{deleteFeedback.message}</p>
               ) : null}
+              <ConfirmationDialog
+                open={isDeleteDialogOpen}
+                onOpenChange={setIsDeleteDialogOpen}
+                title="Remover usuário"
+                description={`Remover o usuário ${user.name}? Esta ação não pode ser desfeita.`}
+                confirmLabel="Remover"
+                confirmingLabel="Removendo..."
+                onConfirm={handleDelete}
+                isConfirming={isDeleting}
+              />
             </div>
           ) : null}
         </div>

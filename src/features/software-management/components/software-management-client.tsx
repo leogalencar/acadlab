@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { ConfirmationDialog } from "@/features/shared/components/confirmation-dialog";
 import { idleActionState, type ActionState } from "@/features/shared/types";
 import { PAGE_SIZE_OPTIONS } from "@/features/shared/table";
 import {
@@ -272,12 +273,21 @@ function SoftwareDialog({ mode, open, onOpenChange, software }: SoftwareDialogPr
   const router = useRouter();
   const [deleteFeedback, setDeleteFeedback] = useState<ActionState | null>(null);
   const [isDeleting, startDeleting] = useTransition();
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const handleClose = (nextOpen: boolean) => {
     if (!nextOpen) {
       setDeleteFeedback(null);
+      setIsDeleteDialogOpen(false);
     }
     onOpenChange(nextOpen);
+  };
+
+  const requestDelete = () => {
+    if (!software) {
+      return;
+    }
+    setIsDeleteDialogOpen(true);
   };
 
   const handleDelete = () => {
@@ -285,9 +295,7 @@ function SoftwareDialog({ mode, open, onOpenChange, software }: SoftwareDialogPr
       return;
     }
 
-    if (!window.confirm(`Remover o software ${software.name}? Esta ação não pode ser desfeita.`)) {
-      return;
-    }
+    setIsDeleteDialogOpen(false);
 
     const formData = new FormData();
     formData.set("softwareId", software.id);
@@ -331,12 +339,22 @@ function SoftwareDialog({ mode, open, onOpenChange, software }: SoftwareDialogPr
             <p className="text-xs text-muted-foreground">
               A remoção não desfaz associações anteriores, mas impede novas associações.
             </p>
-            <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+            <Button variant="destructive" onClick={requestDelete} disabled={isDeleting}>
               {isDeleting ? "Removendo..." : "Remover software"}
             </Button>
             {deleteFeedback?.status === "error" ? (
               <p className="text-sm text-destructive">{deleteFeedback.message}</p>
             ) : null}
+            <ConfirmationDialog
+              open={isDeleteDialogOpen}
+              onOpenChange={setIsDeleteDialogOpen}
+              title="Remover software"
+              description={`Remover o software ${software.name}? Esta ação não pode ser desfeita.`}
+              confirmLabel="Remover"
+              confirmingLabel="Removendo..."
+              onConfirm={handleDelete}
+              isConfirming={isDeleting}
+            />
           </div>
         ) : null}
 
