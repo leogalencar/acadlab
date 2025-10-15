@@ -1,6 +1,7 @@
 "use client";
 
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +17,7 @@ interface ResetPasswordFormProps {
 }
 
 export function ResetPasswordForm({ token, email }: ResetPasswordFormProps) {
-  const [state, formAction] = useFormState(resetPasswordAction, initialState);
+  const [state, formAction] = useActionState(resetPasswordAction, initialState);
 
   return (
     <form className="space-y-6" action={formAction}>

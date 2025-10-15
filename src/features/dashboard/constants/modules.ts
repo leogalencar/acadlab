@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { ClipboardList, HardHat, LayoutDashboard, Settings, Users } from "lucide-react";
+import { ClipboardList, HardHat, LayoutDashboard, Settings, SlidersHorizontal, Users } from "lucide-react";
 import { Role } from "@prisma/client";
 
 export interface DashboardModule {
@@ -49,6 +49,15 @@ export const DASHBOARD_MODULES: DashboardModule[] = [
     href: "/software",
     roles: [Role.ADMIN, Role.TECHNICIAN],
     icon: HardHat,
+    status: "available",
+  },
+  {
+    id: "system-rules",
+    title: "Regras do Sistema",
+    description: "Configure cores institucionais e horários padrão das aulas.",
+    href: "/system-rules",
+    roles: [Role.ADMIN],
+    icon: SlidersHorizontal,
     status: "available",
   },
 ];

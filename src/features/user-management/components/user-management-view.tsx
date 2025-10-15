@@ -48,9 +48,17 @@ interface UserManagementViewProps {
   sorting: UserSortingState;
   pagination: UserPaginationState;
   availableRoles: Role[];
+  allowedEmailDomains: string[];
 }
 
-export function UserManagementView({ users, actorRole, sorting, pagination, availableRoles }: UserManagementViewProps) {
+export function UserManagementView({
+  users,
+  actorRole,
+  sorting,
+  pagination,
+  availableRoles,
+  allowedEmailDomains,
+}: UserManagementViewProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [dialogMode, setDialogMode] = useState<"create" | "edit" | "view">("create");
@@ -260,6 +268,7 @@ export function UserManagementView({ users, actorRole, sorting, pagination, avai
         onOpenChange={handleDialogOpenChange}
         user={selectedUser}
         actorRole={actorRole}
+        allowedEmailDomains={allowedEmailDomains}
       />
     </div>
   );
@@ -309,9 +318,17 @@ interface UserDialogProps {
   onOpenChange: (open: boolean) => void;
   user: SerializableUser | null;
   actorRole: Role;
+  allowedEmailDomains: string[];
 }
 
-function UserDialog({ mode, open, onOpenChange, user, actorRole }: UserDialogProps) {
+function UserDialog({
+  mode,
+  open,
+  onOpenChange,
+  user,
+  actorRole,
+  allowedEmailDomains,
+}: UserDialogProps) {
   const router = useRouter();
   const [deleteFeedback, setDeleteFeedback] = useState<UserManagementActionState>(initialActionState);
   const [isDeleting, startDeleting] = useTransition();
@@ -376,6 +393,7 @@ function UserDialog({ mode, open, onOpenChange, user, actorRole }: UserDialogPro
               mode={mode}
               user={mode === "edit" ? user : null}
               actorRole={actorRole}
+              allowedEmailDomains={allowedEmailDomains}
               onCompleted={() => {
                 router.refresh();
                 handleClose(false);
@@ -418,10 +436,11 @@ interface UserFormProps {
   mode: "create" | "edit";
   user: SerializableUser | null;
   actorRole: Role;
+  allowedEmailDomains: string[];
   onCompleted: () => void;
 }
 
-function UserForm({ mode, user, actorRole, onCompleted }: UserFormProps) {
+function UserForm({ mode, user, actorRole, allowedEmailDomains, onCompleted }: UserFormProps) {
   const [formState, formAction, isPending] = useActionState(
     mode === "create" ? createUserAction : updateUserAction,
     initialActionState,
@@ -458,6 +477,9 @@ function UserForm({ mode, user, actorRole, onCompleted }: UserFormProps) {
             placeholder="usuario@instituicao.edu.br"
             required
           />
+          <p className="text-xs text-muted-foreground">
+            {buildAllowedDomainsHint(allowedEmailDomains)}
+          </p>
         </div>
       </div>
 
@@ -585,6 +607,19 @@ function getAssignableRoles(actorRole: Role, currentRole?: Role): Role[] {
   }
 
   return currentRole ? [currentRole] : [];
+}
+
+function buildAllowedDomainsHint(allowedEmailDomains: string[]): string {
+  if (allowedEmailDomains.length === 0) {
+    return "Nenhum domínio permitido foi configurado nas regras do sistema.";
+  }
+
+  if (allowedEmailDomains.length === 1) {
+    return `Somente e-mails @${allowedEmailDomains[0]} são aceitos.`;
+  }
+
+  const formatted = allowedEmailDomains.map((domain) => `@${domain}`).join(", ");
+  return `Domínios permitidos: ${formatted}.`;
 }
 
 function canManageRole(actorRole: Role, targetRole: Role) {

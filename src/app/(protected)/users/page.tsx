@@ -6,6 +6,7 @@ import { auth } from "@/auth";
 import { UserFilters } from "@/features/user-management/components/user-filters";
 import { UserManagementView } from "@/features/user-management/components/user-management-view";
 import { buildUserFiltersState, getUsersWithFilters } from "@/features/user-management/server/queries";
+import { getAllowedEmailDomains } from "@/features/system-rules/server/queries";
 import { resolveSearchParams, type SearchParamsLike } from "@/features/shared/search-params";
 
 export const metadata: Metadata = {
@@ -55,6 +56,7 @@ export default async function UsersManagementPage({
 
   const paginationState = { ...pagination, total };
   const availableRoles = actorRole === Role.ADMIN ? Object.values(Role) : [Role.PROFESSOR];
+  const allowedEmailDomains = await getAllowedEmailDomains();
 
   return (
     <div className="space-y-8">
@@ -83,6 +85,7 @@ export default async function UsersManagementPage({
         sorting={sorting}
         pagination={paginationState}
         availableRoles={availableRoles}
+        allowedEmailDomains={allowedEmailDomains}
       />
     </div>
   );

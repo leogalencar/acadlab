@@ -172,6 +172,7 @@ function buildBreadcrumbItems(segments: string[]) {
     software: "Softwares",
     profile: "Meu perfil",
     users: "Usuários",
+    "system-rules": "Regras do sistema",
   };
 
   const items: Array<{ href: string; label: string }> = [];

@@ -1,6 +1,11 @@
 import { PrismaClient, Prisma, Role, UserStatus } from "@prisma/client";
 import { hash } from "bcryptjs";
 
+import {
+  DEFAULT_SYSTEM_RULES_MINUTES,
+  SYSTEM_RULE_NAMES,
+} from "../src/features/system-rules/constants";
+
 const prisma = new PrismaClient();
 
 const FALLBACK_PASSWORD = "ChangeMe123!";
@@ -170,6 +175,51 @@ async function ensureAdmin() {
   }
 }
 
+async function ensureSystemRules() {
+  const colorsPayload = JSON.parse(
+    JSON.stringify(DEFAULT_SYSTEM_RULES_MINUTES.colors),
+  ) as Prisma.InputJsonValue;
+
+  const schedulePayload = JSON.parse(
+    JSON.stringify(DEFAULT_SYSTEM_RULES_MINUTES.schedule),
+  ) as Prisma.InputJsonValue;
+
+  const emailDomainsPayload = JSON.parse(
+    JSON.stringify({
+      domains: DEFAULT_SYSTEM_RULES_MINUTES.account.allowedEmailDomains,
+    }),
+  ) as Prisma.InputJsonValue;
+
+  await prisma.$transaction([
+    prisma.systemRule.upsert({
+      where: { name: SYSTEM_RULE_NAMES.COLORS },
+      update: { value: colorsPayload },
+      create: {
+        name: SYSTEM_RULE_NAMES.COLORS,
+        value: colorsPayload,
+      },
+    }),
+    prisma.systemRule.upsert({
+      where: { name: SYSTEM_RULE_NAMES.SCHEDULE },
+      update: { value: schedulePayload },
+      create: {
+        name: SYSTEM_RULE_NAMES.SCHEDULE,
+        value: schedulePayload,
+      },
+    }),
+    prisma.systemRule.upsert({
+      where: { name: SYSTEM_RULE_NAMES.EMAIL_DOMAINS },
+      update: { value: emailDomainsPayload },
+      create: {
+        name: SYSTEM_RULE_NAMES.EMAIL_DOMAINS,
+        value: emailDomainsPayload,
+      },
+    }),
+  ]);
+
+  console.log("[seed] System rules configured.");
+}
+
 async function main() {
   await ensureAdmin();
   await ensureRoleUser({
@@ -188,6 +238,7 @@ async function main() {
     role: Role.PROFESSOR,
     logLabel: "professor",
   });
+  await ensureSystemRules();
 }
 
 main()
