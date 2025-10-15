@@ -9,7 +9,7 @@ import {
   useState,
   useTransition,
 } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { LaboratoryStatus, Role } from "@prisma/client";
 import { ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -463,19 +463,19 @@ function LaboratoryDialog({ mode, open, onOpenChange, laboratory, softwareCatalo
                         id: quickCreateId,
                         open: showQuickCreate,
                         onToggle: () => setShowQuickCreate((prev) => !prev),
+                        render: () => (
+                          <SoftwareQuickCreate
+                            id={quickCreateId}
+                            onSuccess={() => {
+                              setShowQuickCreate(false);
+                              router.refresh();
+                            }}
+                          />
+                        ),
                       }
                     : undefined
                 }
               />
-              {mode === "create" && showQuickCreate ? (
-                <SoftwareQuickCreate
-                  id={quickCreateId}
-                  onSuccess={() => {
-                    setShowQuickCreate(false);
-                    router.refresh();
-                  }}
-                />
-              ) : null}
             </div>
           ) : laboratory ? (
             <LaboratoryDetails laboratory={laboratory} />
@@ -527,6 +527,7 @@ interface LaboratoryFormProps {
     id: string;
     open: boolean;
     onToggle: () => void;
+    render: () => ReactNode;
   };
 }
 
@@ -535,6 +536,7 @@ function LaboratoryForm({ mode, laboratory, softwareCatalog, onCompleted, quickC
     mode === "create" ? createLaboratoryAction : updateLaboratoryAction,
     idleActionState,
   );
+  const formId = useId();
 
   useEffect(() => {
     if (formState.status === "success") {
@@ -547,57 +549,60 @@ function LaboratoryForm({ mode, laboratory, softwareCatalog, onCompleted, quickC
       <div>
         <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Informações gerais</h3>
       </div>
-      <form action={formAction} className="grid gap-4">
-        {mode === "edit" && laboratory ? (
-          <input type="hidden" name="laboratoryId" value={laboratory.id} />
-        ) : null}
-        <div className="grid gap-2">
-          <Label htmlFor="name">Nome do laboratório</Label>
-          <Input
-            id="name"
-            name="name"
-            defaultValue={laboratory?.name ?? ""}
-            placeholder="Laboratório de Redes"
-            required
-          />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="capacity">Capacidade</Label>
-          <Input
-            id="capacity"
-            name="capacity"
-            type="number"
-            min={1}
-            step={1}
-            defaultValue={laboratory?.capacity ?? 20}
-            required
-          />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="status">Status operacional</Label>
-          <select
-            id="status"
-            name="status"
-            defaultValue={laboratory?.status ?? LaboratoryStatus.ACTIVE}
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          >
-            <option value={LaboratoryStatus.ACTIVE}>{LAB_STATUS_LABELS[LaboratoryStatus.ACTIVE]}</option>
-            <option value={LaboratoryStatus.INACTIVE}>{LAB_STATUS_LABELS[LaboratoryStatus.INACTIVE]}</option>
-          </select>
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="description">Descrição</Label>
-          <textarea
-            id="description"
-            name="description"
-            defaultValue={laboratory?.description ?? ""}
-            rows={3}
-            className="resize-none rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            placeholder="Detalhes sobre infraestrutura, observações ou orientações."
-          />
-        </div>
+      <div className="grid gap-4">
+        <form id={formId} action={formAction} className="grid gap-4">
+          {mode === "edit" && laboratory ? (
+            <input type="hidden" name="laboratoryId" value={laboratory.id} />
+          ) : null}
+          <div className="grid gap-2">
+            <Label htmlFor="name">Nome do laboratório</Label>
+            <Input
+              id="name"
+              name="name"
+              defaultValue={laboratory?.name ?? ""}
+              placeholder="Laboratório de Redes"
+              required
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="capacity">Capacidade</Label>
+            <Input
+              id="capacity"
+              name="capacity"
+              type="number"
+              min={1}
+              step={1}
+              defaultValue={laboratory?.capacity ?? 20}
+              required
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="status">Status operacional</Label>
+            <select
+              id="status"
+              name="status"
+              defaultValue={laboratory?.status ?? LaboratoryStatus.ACTIVE}
+              className="rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value={LaboratoryStatus.ACTIVE}>{LAB_STATUS_LABELS[LaboratoryStatus.ACTIVE]}</option>
+              <option value={LaboratoryStatus.INACTIVE}>{LAB_STATUS_LABELS[LaboratoryStatus.INACTIVE]}</option>
+            </select>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="description">Descrição</Label>
+            <textarea
+              id="description"
+              name="description"
+              defaultValue={laboratory?.description ?? ""}
+              rows={3}
+              className="resize-none rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="Detalhes sobre infraestrutura, observações ou orientações."
+            />
+          </div>
+        </form>
         {mode === "create" ? (
           <SoftwareSelectionField
+            formId={formId}
             softwareCatalog={softwareCatalog}
             quickCreate={
               quickCreate
@@ -605,6 +610,7 @@ function LaboratoryForm({ mode, laboratory, softwareCatalog, onCompleted, quickC
                     open: quickCreate.open,
                     onToggle: quickCreate.onToggle,
                     targetId: quickCreate.id,
+                    render: quickCreate.render,
                   }
                 : undefined
             }
@@ -613,27 +619,41 @@ function LaboratoryForm({ mode, laboratory, softwareCatalog, onCompleted, quickC
         {formState.status === "error" ? (
           <p className="text-sm text-destructive">{formState.message}</p>
         ) : null}
-        <Button type="submit" disabled={isPending}>
+        <Button type="submit" form={formId} disabled={isPending}>
           {isPending ? "Salvando..." : mode === "create" ? "Cadastrar laboratório" : "Salvar alterações"}
         </Button>
-      </form>
+      </div>
     </section>
   );
 }
 
 function SoftwareSelectionField({
   softwareCatalog,
+  formId,
   quickCreate,
 }: {
   softwareCatalog: SerializableSoftware[];
+  formId: string;
   quickCreate?: {
     open: boolean;
     onToggle: () => void;
     targetId: string;
+    render: () => ReactNode;
   };
 }) {
   const hasSoftwareOptions = softwareCatalog.length > 0;
   const quickCreateVisible = quickCreate?.open ?? false;
+  const quickCreateSection = quickCreate
+    ? quickCreateVisible
+      ? quickCreate.render()
+      : (
+          <div
+            id={quickCreate.targetId}
+            className="hidden"
+            aria-hidden="true"
+          />
+        )
+    : null;
 
   return (
     <fieldset className="space-y-4">
@@ -659,6 +679,7 @@ function SoftwareSelectionField({
           </Button>
         ) : null}
       </div>
+      {quickCreateSection}
       {hasSoftwareOptions ? (
         <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-border/70 bg-muted/40 p-3 text-sm">
           {softwareCatalog.map((software) => {
@@ -671,6 +692,7 @@ function SoftwareSelectionField({
                   type="checkbox"
                   name="softwareIds"
                   value={software.id}
+                  form={formId}
                   className="mt-1 h-4 w-4 rounded border border-input text-primary"
                 />
                 <span>
