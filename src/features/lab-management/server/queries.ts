@@ -1,4 +1,4 @@
-import { LaboratoryStatus, ReservationStatus, Prisma } from "@prisma/client";
+import { LaboratoryStatus, Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 
@@ -12,12 +12,9 @@ import type {
 import { DEFAULT_PAGE_SIZE } from "@/features/shared/table";
 
 interface GetLaboratoriesOptions {
-  availableFrom?: Date;
-  availableTo?: Date;
   softwareIds: string[];
   statuses: LaboratoryStatus[];
-  minCapacity?: number;
-  maxCapacity?: number;
+  capacity?: number;
   searchTerm?: string;
   updatedFrom?: Date;
   updatedTo?: Date;
@@ -33,12 +30,9 @@ const LAB_SORT_FIELDS: LaboratorySortField[] = [
 ];
 
 export async function getLaboratoriesWithFilters({
-  availableFrom,
-  availableTo,
   softwareIds,
   statuses,
-  minCapacity,
-  maxCapacity,
+  capacity,
   searchTerm,
   updatedFrom,
   updatedTo,
@@ -49,18 +43,6 @@ export async function getLaboratoriesWithFilters({
   total: number;
 }> {
   const conditions: Prisma.LaboratoryWhereInput[] = [];
-
-  if (availableFrom && availableTo) {
-    conditions.push({
-      reservations: {
-        none: {
-          startTime: { lt: availableTo },
-          endTime: { gt: availableFrom },
-          status: { not: ReservationStatus.CANCELLED },
-        },
-      },
-    });
-  }
 
   if (softwareIds.length > 0) {
     conditions.push({
@@ -76,15 +58,8 @@ export async function getLaboratoriesWithFilters({
     conditions.push({ status: { in: statuses } });
   }
 
-  const capacityFilter: Prisma.IntFilter = {};
-  if (typeof minCapacity === "number") {
-    capacityFilter.gte = minCapacity;
-  }
-  if (typeof maxCapacity === "number") {
-    capacityFilter.lte = maxCapacity;
-  }
-  if (Object.keys(capacityFilter).length > 0) {
-    conditions.push({ capacity: capacityFilter });
+  if (typeof capacity === "number") {
+    conditions.push({ capacity: { gte: capacity } });
   }
 
   if (searchTerm) {
@@ -171,7 +146,6 @@ export async function getLaboratoriesWithFilters({
         installedByName: association.installedBy?.name ?? null,
         installedById: association.installedBy?.id ?? null,
       })),
-      isAvailableForSelectedRange: Boolean(availableFrom && availableTo),
     })),
   };
 }
@@ -180,32 +154,24 @@ export function buildFiltersState(
   params: Record<string, string | string[] | undefined>,
 ): {
   filters: LaboratoryFiltersState;
-  availableFrom?: Date;
-  availableTo?: Date;
   softwareIds: string[];
   statuses: LaboratoryStatus[];
-  minCapacity?: number;
-  maxCapacity?: number;
+  capacity?: number;
   searchTerm?: string;
   updatedFrom?: Date;
   updatedTo?: Date;
   sorting: LaboratorySortingState;
   pagination: LaboratoryPaginationState;
 } {
-  const availableFromRaw = getFirst(params["availableFrom"]);
-  const availableToRaw = getFirst(params["availableTo"]);
   const softwareRaw = params["software"];
   const statusesRaw = params["status"];
-  const minCapacityRaw = getFirst(params["minCapacity"]);
-  const maxCapacityRaw = getFirst(params["maxCapacity"]);
+  const capacityRaw = getFirst(params["capacity"]);
   const searchRaw = getFirst(params["search"]);
   const sortByRaw = getFirst(params["sortBy"]);
   const sortOrderRaw = getFirst(params["sortOrder"]);
   const pageRaw = getFirst(params["page"]);
   const perPageRaw = getFirst(params["perPage"]);
 
-  const availableFrom = parseDate(availableFromRaw);
-  const availableTo = parseDate(availableToRaw);
   const updatedFromRaw = getFirst(params["updatedFrom"]);
   const updatedToRaw = getFirst(params["updatedTo"]);
   let updatedFrom = parseDate(updatedFromRaw);
@@ -220,8 +186,7 @@ export function buildFiltersState(
     .map((status) => safeParseStatus(status))
     .filter((status): status is LaboratoryStatus => Boolean(status));
 
-  const minCapacity = parseInteger(minCapacityRaw);
-  const maxCapacity = parseInteger(maxCapacityRaw);
+  const capacity = parseInteger(capacityRaw);
   const searchTerm = searchRaw?.trim() ? searchRaw.trim() : undefined;
 
   const sortBy = LAB_SORT_FIELDS.includes(sortByRaw as LaboratorySortField)
@@ -233,12 +198,9 @@ export function buildFiltersState(
   const perPage = normalizePageSize(parseInteger(perPageRaw));
 
   const filters: LaboratoryFiltersState = {
-    availableFrom: availableFromRaw ?? undefined,
-    availableTo: availableToRaw ?? undefined,
     softwareIds,
     statuses,
-    minCapacity: minCapacityRaw ?? undefined,
-    maxCapacity: maxCapacityRaw ?? undefined,
+    capacity: capacityRaw ?? undefined,
     search: searchTerm,
     updatedFrom: updatedFromRaw ?? undefined,
     updatedTo: updatedToRaw ?? undefined,
@@ -247,33 +209,11 @@ export function buildFiltersState(
   const sorting: LaboratorySortingState = { sortBy, sortOrder };
   const pagination: LaboratoryPaginationState = { page, perPage, total: 0 };
 
-  if (!availableFrom || !availableTo || availableFrom >= availableTo) {
-    return {
-      filters: {
-        ...filters,
-        availableFrom: undefined,
-        availableTo: undefined,
-      },
-      softwareIds,
-      statuses,
-      minCapacity,
-      maxCapacity,
-      searchTerm,
-      sorting,
-      pagination,
-      updatedFrom,
-      updatedTo,
-    };
-  }
-
   return {
     filters,
-    availableFrom,
-    availableTo,
     softwareIds,
     statuses,
-    minCapacity,
-    maxCapacity,
+    capacity,
     searchTerm,
     updatedFrom,
     updatedTo,
