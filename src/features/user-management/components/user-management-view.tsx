@@ -464,9 +464,11 @@ function UserForm({ mode, user, actorRole, actorUserId, allowedEmailDomains, onC
 
   if (isSelf) {
     return (
-      <p className="text-sm text-muted-foreground">
-        Você não pode editar os seus próprios dados por este módulo.
-      </p>
+      <div role="alert" className="rounded-md bg-muted/60 p-3">
+        <p className="text-sm text-muted-foreground">
+          Você não pode editar os seus próprios dados por este módulo.
+        </p>
+      </div>
     );
   }
 
@@ -651,6 +653,11 @@ function canManageRole(actorRole: Role, targetRole: Role) {
   return false;
 }
 
+/**
+ * Determines whether the actor can manage a specific user account. Management is denied when
+ * the target user matches the actor to enforce the self-management restriction, even if the
+ * actor has a role that would otherwise grant permission (e.g., admin editing admin).
+ */
 function canManageUser(actorRole: Role, actorUserId: string, user: SerializableUser) {
   if (user.id === actorUserId) {
     return false;
