@@ -20,7 +20,7 @@ Permitir que administradores e técnicos cadastrem, editem e removam contas de p
 ## Roteiro de testes rápidos
 1. Acesse `/users` com a conta de administrador e valide:
    - Visualização da lista completa de usuários.
-   - Cadastro de um novo professor (formulário “Cadastrar novo usuário”).
+   - Cadastro de um novo professor (formulário “Cadastrar novo usuário”). A senha provisória será enviada automaticamente para o e-mail cadastrado; confira os logs se nenhum servidor SMTP estiver configurado.
    - Edição de um usuário existente (alterar nome/status) e verificação do feedback visual.
    - Exclusão de um usuário de teste recém-criado.
 2. Repita com a conta de técnico e confirme que:
@@ -32,4 +32,5 @@ Permitir que administradores e técnicos cadastrem, editem e removam contas de p
 
 ## Observações
 - Para alterar dados padrão dos mocks, defina `ADMIN_EMAIL`, `TECHNICIAN_EMAIL`, `PROFESSOR_EMAIL`, `*_NAME` ou `*_PASSWORD` no `.env` antes de rodar `npx prisma db seed`.
-- Sempre redefina os dados executando novamente `npx prisma db seed` após limpar o banco para manter um estado previsível. 
+- Sempre redefina os dados executando novamente `npx prisma db seed` após limpar o banco para manter um estado previsível.
+- O módulo envia automaticamente a senha provisória por e-mail ao cadastrar um usuário. Configure as variáveis `SMTP_*` para entrega real; em modo de desenvolvimento, as mensagens aparecem nos logs.
