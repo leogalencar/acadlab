@@ -19,7 +19,7 @@ const notAuthenticated: ActionState = {
   message: "Você precisa estar autenticado.",
 };
 
-const createLaboratorySchema = z.object({
+const laboratoryDetailsSchema = z.object({
   name: z.string().min(1, "Informe o nome do laboratório."),
   capacity: z
     .coerce.number({ invalid_type_error: "Informe a capacidade do laboratório." })
@@ -36,7 +36,14 @@ const createLaboratorySchema = z.object({
     .transform((value) => (value?.length ? value : undefined)),
 });
 
-const updateLaboratorySchema = createLaboratorySchema.extend({
+const createLaboratorySchema = laboratoryDetailsSchema.extend({
+  softwareIds: z
+    .array(z.string().min(1))
+    .optional()
+    .transform((ids) => (ids ? Array.from(new Set(ids)) : [])),
+});
+
+const updateLaboratorySchema = laboratoryDetailsSchema.extend({
   laboratoryId: z.string().min(1, "Laboratório inválido."),
 });
 
@@ -70,6 +77,9 @@ export async function createLaboratoryAction(
     capacity: formData.get("capacity"),
     status: formData.get("status"),
     description: formData.get("description"),
+    softwareIds: formData
+      .getAll("softwareIds")
+      .filter((value): value is string => typeof value === "string"),
   });
 
   if (!parsed.success) {
@@ -77,14 +87,43 @@ export async function createLaboratoryAction(
     return { status: "error", message };
   }
 
+  const { softwareIds, ...laboratoryData } = parsed.data;
+  const sessionUserId = session.user.id;
+
+  if (softwareIds.length > 0) {
+    const existingSoftwareCount = await prisma.software.count({
+      where: { id: { in: softwareIds } },
+    });
+
+    if (existingSoftwareCount !== softwareIds.length) {
+      return {
+        status: "error",
+        message: "Alguns softwares selecionados não estão disponíveis. Atualize a página e tente novamente.",
+      };
+    }
+  }
+
   try {
-    await prisma.laboratory.create({
-      data: {
-        name: parsed.data.name.trim(),
-        capacity: parsed.data.capacity,
-        status: parsed.data.status,
-        description: parsed.data.description,
-      },
+    await prisma.$transaction(async (tx) => {
+      const laboratory = await tx.laboratory.create({
+        data: {
+          name: laboratoryData.name.trim(),
+          capacity: laboratoryData.capacity,
+          status: laboratoryData.status,
+          description: laboratoryData.description,
+        },
+        select: { id: true },
+      });
+
+      if (softwareIds.length > 0) {
+        await tx.laboratorySoftware.createMany({
+          data: softwareIds.map((softwareId) => ({
+            laboratoryId: laboratory.id,
+            softwareId,
+            installedById: sessionUserId,
+          })),
+        });
+      }
     });
   } catch (error) {
     if (

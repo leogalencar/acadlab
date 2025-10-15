@@ -435,6 +435,7 @@ function LaboratoryDialog({ mode, open, onOpenChange, laboratory, softwareCatalo
             <LaboratoryForm
               mode={mode}
               laboratory={laboratory}
+              softwareCatalog={softwareCatalog}
               onCompleted={() => {
                 router.refresh();
                 handleClose(false);
@@ -484,10 +485,11 @@ function LaboratoryDialog({ mode, open, onOpenChange, laboratory, softwareCatalo
 interface LaboratoryFormProps {
   mode: "create" | "edit";
   laboratory: SerializableLaboratory | null;
+  softwareCatalog: SerializableSoftware[];
   onCompleted: () => void;
 }
 
-function LaboratoryForm({ mode, laboratory, onCompleted }: LaboratoryFormProps) {
+function LaboratoryForm({ mode, laboratory, softwareCatalog, onCompleted }: LaboratoryFormProps) {
   const [formState, formAction, isPending] = useActionState(
     mode === "create" ? createLaboratoryAction : updateLaboratoryAction,
     idleActionState,
@@ -553,6 +555,7 @@ function LaboratoryForm({ mode, laboratory, onCompleted }: LaboratoryFormProps) 
             placeholder="Detalhes sobre infraestrutura, observações ou orientações."
           />
         </div>
+        {mode === "create" ? <SoftwareSelectionField softwareCatalog={softwareCatalog} /> : null}
         {formState.status === "error" ? (
           <p className="text-sm text-destructive">{formState.message}</p>
         ) : null}
@@ -561,6 +564,51 @@ function LaboratoryForm({ mode, laboratory, onCompleted }: LaboratoryFormProps) 
         </Button>
       </form>
     </section>
+  );
+}
+
+function SoftwareSelectionField({
+  softwareCatalog,
+}: {
+  softwareCatalog: SerializableSoftware[];
+}) {
+  return (
+    <fieldset className="space-y-3">
+      <legend className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+        Softwares instalados
+      </legend>
+      {softwareCatalog.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          Cadastre softwares no catálogo para associá-los ao laboratório após o registro.
+        </p>
+      ) : (
+        <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-border/70 bg-muted/40 p-3 text-sm">
+          {softwareCatalog.map((software) => {
+            const checkboxId = `software-${software.id}`;
+
+            return (
+              <label key={software.id} htmlFor={checkboxId} className="flex items-start gap-3">
+                <input
+                  id={checkboxId}
+                  type="checkbox"
+                  name="softwareIds"
+                  value={software.id}
+                  className="mt-1 h-4 w-4 rounded border border-input text-primary"
+                />
+                <span>
+                  <span className="block font-medium text-foreground">
+                    {software.name} • {software.version}
+                  </span>
+                  {software.supplier ? (
+                    <span className="block text-xs text-muted-foreground">Fornecedor: {software.supplier}</span>
+                  ) : null}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </fieldset>
   );
 }
 
