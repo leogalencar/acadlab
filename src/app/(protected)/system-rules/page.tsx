@@ -22,6 +22,8 @@ export default async function SystemRulesPage() {
   }
 
   const rules = await getSystemRules();
+  const formKey =
+    rules.updatedAt ?? `${rules.primaryColor}-${rules.secondaryColor}-${rules.accentColor}`;
 
   return (
     <div className="space-y-8">
@@ -34,7 +36,7 @@ export default async function SystemRulesPage() {
           </p>
         </div>
       </header>
-      <SystemRulesForm rules={rules} />
+      <SystemRulesForm key={formKey} rules={rules} />
     </div>
   );
 }

@@ -1,31 +1,14 @@
 import { PrismaClient, Prisma, Role, UserStatus } from "@prisma/client";
 import { hash } from "bcryptjs";
 
+import {
+  DEFAULT_SYSTEM_RULES_MINUTES,
+  SYSTEM_RULE_NAMES,
+} from "../src/features/system-rules/constants";
+
 const prisma = new PrismaClient();
 
 const FALLBACK_PASSWORD = "ChangeMe123!";
-const SYSTEM_RULES_ID = "acadlab-system-rules";
-
-const DEFAULT_SYSTEM_RULES = {
-  primaryColor: "#1D4ED8",
-  secondaryColor: "#1E293B",
-  accentColor: "#F97316",
-  morningFirstClassStart: 7 * 60,
-  morningClassDurationMinutes: 50,
-  morningClassesCount: 6,
-  morningIntervalStart: 9 * 60 + 50,
-  morningIntervalDurationMinutes: 20,
-  afternoonFirstClassStart: 13 * 60,
-  afternoonClassDurationMinutes: 50,
-  afternoonClassesCount: 5,
-  afternoonIntervalStart: 15 * 60 + 40,
-  afternoonIntervalDurationMinutes: 15,
-  eveningFirstClassStart: 18 * 60 + 30,
-  eveningClassDurationMinutes: 50,
-  eveningClassesCount: 4,
-  eveningIntervalStart: 19 * 60 + 20,
-  eveningIntervalDurationMinutes: 10,
-};
 
 type EnsureUserOptions = {
   email: string;
@@ -193,14 +176,32 @@ async function ensureAdmin() {
 }
 
 async function ensureSystemRules() {
-  await prisma.systemRules.upsert({
-    where: { id: SYSTEM_RULES_ID },
-    update: {},
-    create: {
-      id: SYSTEM_RULES_ID,
-      ...DEFAULT_SYSTEM_RULES,
-    },
-  });
+  const colorsPayload = JSON.parse(
+    JSON.stringify(DEFAULT_SYSTEM_RULES_MINUTES.colors),
+  ) as Prisma.InputJsonValue;
+
+  const schedulePayload = JSON.parse(
+    JSON.stringify(DEFAULT_SYSTEM_RULES_MINUTES.schedule),
+  ) as Prisma.InputJsonValue;
+
+  await prisma.$transaction([
+    prisma.systemRule.upsert({
+      where: { name: SYSTEM_RULE_NAMES.COLORS },
+      update: { value: colorsPayload },
+      create: {
+        name: SYSTEM_RULE_NAMES.COLORS,
+        value: colorsPayload,
+      },
+    }),
+    prisma.systemRule.upsert({
+      where: { name: SYSTEM_RULE_NAMES.SCHEDULE },
+      update: { value: schedulePayload },
+      create: {
+        name: SYSTEM_RULE_NAMES.SCHEDULE,
+        value: schedulePayload,
+      },
+    }),
+  ]);
 
   console.log("[seed] System rules configured.");
 }

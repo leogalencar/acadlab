@@ -8,11 +8,11 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import {
   MINUTES_PER_DAY,
-  SYSTEM_RULES_ID,
+  PERIOD_IDS,
+  SYSTEM_RULE_NAMES,
+  type PeriodId,
 } from "@/features/system-rules/constants";
-import {
-  calculatePeriodEnd,
-} from "@/features/system-rules/utils";
+import { calculatePeriodEnd } from "@/features/system-rules/utils";
 import type { SystemRulesActionState } from "@/features/system-rules/types";
 
 const colorSchema = z
@@ -56,35 +56,82 @@ const intervalDurationSchema = z
   .min(0, "A duração do intervalo não pode ser negativa.")
   .max(180, "A duração do intervalo deve ser menor que 3 horas.");
 
+const intervalSchema = z.object({
+  start: timeSchema,
+  durationMinutes: intervalDurationSchema,
+});
+
 const periodSchema = z
   .object({
     firstClassTime: timeSchema,
     classDurationMinutes: durationSchema,
     classesCount: classCountSchema,
-    intervalStart: timeSchema,
-    intervalDurationMinutes: intervalDurationSchema,
+    intervals: z
+      .array(intervalSchema)
+      .max(6, "Defina no máximo 6 intervalos por período."),
   })
   .superRefine((period, ctx) => {
-    const sessionEndWithoutInterval =
+    const sessionEndWithoutIntervals =
       period.firstClassTime + period.classDurationMinutes * period.classesCount;
 
-    if (period.intervalStart < period.firstClassTime) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["intervalStart"],
-        message: "O intervalo deve iniciar após o início das aulas.",
-      });
-    }
+    const periodEnd = calculatePeriodEnd(
+      period.firstClassTime,
+      period.classDurationMinutes,
+      period.classesCount,
+      period.intervals,
+    );
 
-    if (period.intervalStart > sessionEndWithoutInterval) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["intervalStart"],
-        message: "O intervalo deve ocorrer durante as aulas do período.",
-      });
-    }
+    const orderedIntervals = period.intervals
+      .map((interval, index) => ({ interval, index }))
+      .sort((left, right) => left.interval.start - right.interval.start);
 
-    const periodEnd = sessionEndWithoutInterval + period.intervalDurationMinutes;
+    orderedIntervals.forEach(({ interval, index }, position) => {
+      if (interval.start < period.firstClassTime) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["intervals", index, "start"],
+          message: "Os intervalos devem iniciar após o começo das aulas.",
+        });
+      }
+
+      if (interval.start > sessionEndWithoutIntervals) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["intervals", index, "start"],
+          message: "Os intervalos precisam ocorrer durante o período letivo informado.",
+        });
+      }
+
+      if (interval.start + interval.durationMinutes > MINUTES_PER_DAY) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["intervals", index, "durationMinutes"],
+          message: "Os intervalos devem terminar antes do fim do dia.",
+        });
+      }
+
+      if (interval.start + interval.durationMinutes > periodEnd) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["intervals", index, "durationMinutes"],
+          message: "A duração total do período não comporta este intervalo.",
+        });
+      }
+
+      if (position > 0) {
+        const previous = orderedIntervals[position - 1];
+        const previousEnd =
+          previous.interval.start + previous.interval.durationMinutes;
+
+        if (interval.start < previousEnd) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["intervals", index, "start"],
+            message: "Os intervalos não podem se sobrepor.",
+          });
+        }
+      }
+    });
 
     if (periodEnd > MINUTES_PER_DAY) {
       ctx.addIssue({
@@ -109,21 +156,21 @@ const systemRulesSchema = z
       data.morning.firstClassTime,
       data.morning.classDurationMinutes,
       data.morning.classesCount,
-      data.morning.intervalDurationMinutes,
+      data.morning.intervals,
     );
 
     const afternoonEnd = calculatePeriodEnd(
       data.afternoon.firstClassTime,
       data.afternoon.classDurationMinutes,
       data.afternoon.classesCount,
-      data.afternoon.intervalDurationMinutes,
+      data.afternoon.intervals,
     );
 
     const eveningEnd = calculatePeriodEnd(
       data.evening.firstClassTime,
       data.evening.classDurationMinutes,
       data.evening.classesCount,
-      data.evening.intervalDurationMinutes,
+      data.evening.intervals,
     );
 
     if (data.morning.firstClassTime >= data.afternoon.firstClassTime) {
@@ -185,30 +232,12 @@ export async function updateSystemRulesAction(
   }
 
   const parsed = systemRulesSchema.safeParse({
-    primaryColor: formData.get("primaryColor"),
-    secondaryColor: formData.get("secondaryColor"),
-    accentColor: formData.get("accentColor"),
-    morning: {
-      firstClassTime: formData.get("morning.firstClassTime"),
-      classDurationMinutes: formData.get("morning.classDurationMinutes"),
-      classesCount: formData.get("morning.classesCount"),
-      intervalStart: formData.get("morning.intervalStart"),
-      intervalDurationMinutes: formData.get("morning.intervalDurationMinutes"),
-    },
-    afternoon: {
-      firstClassTime: formData.get("afternoon.firstClassTime"),
-      classDurationMinutes: formData.get("afternoon.classDurationMinutes"),
-      classesCount: formData.get("afternoon.classesCount"),
-      intervalStart: formData.get("afternoon.intervalStart"),
-      intervalDurationMinutes: formData.get("afternoon.intervalDurationMinutes"),
-    },
-    evening: {
-      firstClassTime: formData.get("evening.firstClassTime"),
-      classDurationMinutes: formData.get("evening.classDurationMinutes"),
-      classesCount: formData.get("evening.classesCount"),
-      intervalStart: formData.get("evening.intervalStart"),
-      intervalDurationMinutes: formData.get("evening.intervalDurationMinutes"),
-    },
+    primaryColor: getStringValue(formData, "primaryColor"),
+    secondaryColor: getStringValue(formData, "secondaryColor"),
+    accentColor: getStringValue(formData, "accentColor"),
+    morning: buildPeriodFormPayload(formData, "morning"),
+    afternoon: buildPeriodFormPayload(formData, "afternoon"),
+    evening: buildPeriodFormPayload(formData, "evening"),
   });
 
   if (!parsed.success) {
@@ -218,38 +247,41 @@ export async function updateSystemRulesAction(
 
   const data = parsed.data;
 
-  const mapSystemRulesData = (rules: typeof data) => ({
-    primaryColor: rules.primaryColor,
-    secondaryColor: rules.secondaryColor,
-    accentColor: rules.accentColor,
-    morningFirstClassStart: rules.morning.firstClassTime,
-    morningClassDurationMinutes: rules.morning.classDurationMinutes,
-    morningClassesCount: rules.morning.classesCount,
-    morningIntervalStart: rules.morning.intervalStart,
-    morningIntervalDurationMinutes: rules.morning.intervalDurationMinutes,
-    afternoonFirstClassStart: rules.afternoon.firstClassTime,
-    afternoonClassDurationMinutes: rules.afternoon.classDurationMinutes,
-    afternoonClassesCount: rules.afternoon.classesCount,
-    afternoonIntervalStart: rules.afternoon.intervalStart,
-    afternoonIntervalDurationMinutes: rules.afternoon.intervalDurationMinutes,
-    eveningFirstClassStart: rules.evening.firstClassTime,
-    eveningClassDurationMinutes: rules.evening.classDurationMinutes,
-    eveningClassesCount: rules.evening.classesCount,
-    eveningIntervalStart: rules.evening.intervalStart,
-    eveningIntervalDurationMinutes: rules.evening.intervalDurationMinutes,
-  });
+  const colorsPayload = {
+    primaryColor: data.primaryColor,
+    secondaryColor: data.secondaryColor,
+    accentColor: data.accentColor,
+  };
+
+  const schedulePayload = {
+    periods: PERIOD_IDS.reduce(
+      (accumulator, period) => {
+        accumulator[period] = mapPeriodForPersistence(data[period]);
+        return accumulator;
+      },
+      {} as Record<PeriodId, ReturnType<typeof mapPeriodForPersistence>>,
+    ),
+  };
 
   try {
-    const mappedData = mapSystemRulesData(data);
-
-    await prisma.systemRules.upsert({
-      where: { id: SYSTEM_RULES_ID },
-      update: mappedData,
-      create: {
-        id: SYSTEM_RULES_ID,
-        ...mappedData,
-      },
-    });
+    await prisma.$transaction([
+      prisma.systemRule.upsert({
+        where: { name: SYSTEM_RULE_NAMES.COLORS },
+        update: { value: colorsPayload },
+        create: {
+          name: SYSTEM_RULE_NAMES.COLORS,
+          value: colorsPayload,
+        },
+      }),
+      prisma.systemRule.upsert({
+        where: { name: SYSTEM_RULE_NAMES.SCHEDULE },
+        update: { value: schedulePayload },
+        create: {
+          name: SYSTEM_RULE_NAMES.SCHEDULE,
+          value: schedulePayload,
+        },
+      }),
+    ]);
   } catch (error) {
     console.error("[system-rules] Failed to update rules", error);
     return {
@@ -259,9 +291,76 @@ export async function updateSystemRulesAction(
   }
 
   revalidatePath("/system-rules");
+  revalidatePath("/", "layout");
 
   return {
     status: "success",
     message: "Regras do sistema atualizadas com sucesso.",
+  };
+}
+
+type PeriodSchemaOutput = z.infer<typeof periodSchema>;
+
+function getStringValue(formData: FormData, name: string): string | undefined {
+  const value = formData.get(name);
+  return typeof value === "string" ? value : undefined;
+}
+
+function buildPeriodFormPayload(formData: FormData, period: PeriodId) {
+  return {
+    firstClassTime: getStringValue(formData, `${period}.firstClassTime`),
+    classDurationMinutes: getStringValue(formData, `${period}.classDurationMinutes`),
+    classesCount: getStringValue(formData, `${period}.classesCount`),
+    intervals: extractIntervalFormValues(formData, period),
+  };
+}
+
+function extractIntervalFormValues(formData: FormData, period: PeriodId) {
+  const prefix = `${period}.intervals.`;
+  const intervals = new Map<number, { start?: string; durationMinutes?: string }>();
+
+  for (const [key, rawValue] of formData.entries()) {
+    if (typeof rawValue !== "string" || !key.startsWith(prefix)) {
+      continue;
+    }
+
+    const match = key.slice(prefix.length).match(/^(\d+)\.(start|durationMinutes)$/);
+
+    if (!match) {
+      continue;
+    }
+
+    const index = Number.parseInt(match[1] ?? "", 10);
+
+    if (!Number.isFinite(index)) {
+      continue;
+    }
+
+    const field = match[2] as "start" | "durationMinutes";
+    const record = intervals.get(index) ?? {};
+
+    record[field] = rawValue;
+    intervals.set(index, record);
+  }
+
+  return Array.from(intervals.entries())
+    .sort((left, right) => left[0] - right[0])
+    .map(([, record]) => ({
+      start: record.start ?? "",
+      durationMinutes: record.durationMinutes ?? "",
+    }));
+}
+
+function mapPeriodForPersistence(period: PeriodSchemaOutput) {
+  return {
+    firstClassTime: period.firstClassTime,
+    classDurationMinutes: period.classDurationMinutes,
+    classesCount: period.classesCount,
+    intervals: [...period.intervals]
+      .sort((left, right) => left.start - right.start)
+      .map((interval) => ({
+        start: interval.start,
+        durationMinutes: interval.durationMinutes,
+      })),
   };
 }

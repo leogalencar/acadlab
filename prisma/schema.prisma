@@ -168,28 +168,12 @@ model SoftwareRequest {
   @@index([status])
 }
 
-model SystemRules {
-  id                                   String   @id @default("acadlab-system-rules")
-  primaryColor                         String
-  secondaryColor                       String
-  accentColor                          String
-  morningFirstClassStart               Int
-  morningClassDurationMinutes          Int
-  morningClassesCount                  Int
-  morningIntervalStart                 Int
-  morningIntervalDurationMinutes       Int
-  afternoonFirstClassStart             Int
-  afternoonClassDurationMinutes        Int
-  afternoonClassesCount                Int
-  afternoonIntervalStart               Int
-  afternoonIntervalDurationMinutes     Int
-  eveningFirstClassStart               Int
-  eveningClassDurationMinutes          Int
-  eveningClassesCount                  Int
-  eveningIntervalStart                 Int
-  eveningIntervalDurationMinutes       Int
-  createdAt                            DateTime @default(now())
-  updatedAt                            DateTime @updatedAt
+model SystemRule {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Notification {
