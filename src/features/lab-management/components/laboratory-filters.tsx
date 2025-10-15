@@ -29,7 +29,7 @@ export function LaboratoryFilters({ filters, sorting, softwareOptions, perPage }
       <CardHeader>
         <CardTitle>Filtrar laboratórios</CardTitle>
         <CardDescription>
-          Combine filtros de capacidade e softwares instalados para encontrar o laboratório ideal.
+          Combine filtros de capacidade mínima e softwares instalados para encontrar o laboratório ideal.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -49,7 +49,7 @@ export function LaboratoryFilters({ filters, sorting, softwareOptions, perPage }
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="capacity">Capacidade (total de estações)</Label>
+              <Label htmlFor="capacity">Capacidade mínima (estações)</Label>
               <Input
                 id="capacity"
                 name="capacity"

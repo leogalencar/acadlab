@@ -59,7 +59,7 @@ export async function getLaboratoriesWithFilters({
   }
 
   if (typeof capacity === "number") {
-    conditions.push({ capacity });
+    conditions.push({ capacity: { gte: capacity } });
   }
 
   if (searchTerm) {
