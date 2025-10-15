@@ -209,6 +209,13 @@ export async function updateUserAction(
     return { status: "error", message: "Usuário não encontrado." };
   }
 
+  if (targetUser.id === session.user.id) {
+    return {
+      status: "error",
+      message: "Você não pode editar os seus próprios dados por este módulo.",
+    };
+  }
+
   if (!canManageRole(actorRole, targetUser.role)) {
     return {
       status: "error",
@@ -220,13 +227,6 @@ export async function updateUserAction(
     return {
       status: "error",
       message: "Você não possui permissão para atribuir este perfil de acesso.",
-    };
-  }
-
-  if (targetUser.id === session.user.id && parsed.data.role !== targetUser.role) {
-    return {
-      status: "error",
-      message: "Não é possível alterar o seu próprio perfil de acesso por este módulo.",
     };
   }
 
