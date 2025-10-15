@@ -151,9 +151,6 @@ export function LaboratoriesClient({
   const tableRows = laboratories.length > 0 ? (
     laboratories.map((laboratory) => {
       const installedSoftware = laboratory.software.length;
-      const availableMessage = laboratory.isAvailableForSelectedRange
-        ? "Disponível para o período filtrado"
-        : "";
 
       return (
         <tr
@@ -176,7 +173,6 @@ export function LaboratoriesClient({
               ? `${installedSoftware} ${installedSoftware === 1 ? "software" : "softwares"}`
               : "Nenhum software associado"}
           </td>
-          <td className="p-4 text-xs text-muted-foreground">{availableMessage}</td>
           <td className="p-4 text-xs text-muted-foreground">
             {new Date(laboratory.updatedAt).toLocaleDateString()}
           </td>
@@ -185,7 +181,7 @@ export function LaboratoriesClient({
     })
   ) : (
     <tr>
-      <td colSpan={6} className="p-8 text-center text-sm text-muted-foreground">
+      <td colSpan={5} className="p-8 text-center text-sm text-muted-foreground">
         Nenhum laboratório encontrado.
         {canManage
           ? " Utilize o botão acima para registrar um novo ambiente."
@@ -235,7 +231,6 @@ export function LaboratoriesClient({
                 alignment="left"
               />
               <th className="p-3 text-left font-medium">Softwares instalados</th>
-              <th className="p-3 text-left font-medium">Disponibilidade</th>
               <SortableHeader
                 label="Atualizado em"
                 field="updatedAt"

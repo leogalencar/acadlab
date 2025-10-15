@@ -28,12 +28,9 @@ export default async function LaboratoriesPage({
   const resolvedParams = await resolveSearchParams<LaboratoriesSearchParams>(searchParams);
   const {
     filters,
-    availableFrom,
-    availableTo,
     softwareIds,
     statuses,
-    minCapacity,
-    maxCapacity,
+    capacity,
     searchTerm,
     updatedFrom,
     updatedTo,
@@ -43,12 +40,9 @@ export default async function LaboratoriesPage({
 
   const [{ laboratories, total }, softwareCatalog] = await Promise.all([
     getLaboratoriesWithFilters({
-      availableFrom,
-      availableTo,
       softwareIds,
       statuses,
-      minCapacity,
-      maxCapacity,
+      capacity,
       searchTerm,
       updatedFrom,
       updatedTo,

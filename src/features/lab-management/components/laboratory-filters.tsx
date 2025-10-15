@@ -29,7 +29,7 @@ export function LaboratoryFilters({ filters, sorting, softwareOptions, perPage }
       <CardHeader>
         <CardTitle>Filtrar laboratórios</CardTitle>
         <CardDescription>
-          Combine filtros de disponibilidade e softwares instalados para encontrar o laboratório ideal.
+          Combine filtros de capacidade e softwares instalados para encontrar o laboratório ideal.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -49,46 +49,14 @@ export function LaboratoryFilters({ filters, sorting, softwareOptions, perPage }
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="availableFrom">Disponível a partir de</Label>
+              <Label htmlFor="capacity">Capacidade (total de estações)</Label>
               <Input
-                id="availableFrom"
-                name="availableFrom"
-                type="datetime-local"
-                defaultValue={filters.availableFrom ?? ""}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="availableTo">Disponível até</Label>
-              <Input
-                id="availableTo"
-                name="availableTo"
-                type="datetime-local"
-                defaultValue={filters.availableTo ?? ""}
-              />
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <div className="grid gap-2">
-              <Label htmlFor="minCapacity">Capacidade mínima</Label>
-              <Input
-                id="minCapacity"
-                name="minCapacity"
+                id="capacity"
+                name="capacity"
                 type="number"
                 min={1}
-                defaultValue={filters.minCapacity ?? ""}
-                placeholder="Ex.: 20"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="maxCapacity">Capacidade máxima</Label>
-              <Input
-                id="maxCapacity"
-                name="maxCapacity"
-                type="number"
-                min={1}
-                defaultValue={filters.maxCapacity ?? ""}
-                placeholder="Ex.: 50"
+                defaultValue={filters.capacity ?? ""}
+                placeholder="Ex.: 40"
               />
             </div>
             <div className="grid gap-2">
