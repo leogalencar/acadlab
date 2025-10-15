@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +18,7 @@ interface LoginFormProps {
 }
 
 export function LoginForm({ callbackUrl, successMessage }: LoginFormProps) {
-  const [state, formAction] = useFormState(loginAction, initialState);
+  const [state, formAction] = useActionState(loginAction, initialState);
 
   return (
     <form className="space-y-6" action={formAction}>

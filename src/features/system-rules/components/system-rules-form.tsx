@@ -1,8 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { useFormStatus } from "react-dom";
 import { Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -79,7 +79,7 @@ type PeriodFieldsState = Record<PeriodId, PeriodFieldState>;
 type PeriodFieldKey = keyof PeriodFieldState;
 
 export function SystemRulesForm({ rules }: SystemRulesFormProps) {
-  const [state, formAction] = useFormState(updateSystemRulesAction, FORM_INITIAL_STATE);
+  const [state, formAction] = useActionState(updateSystemRulesAction, FORM_INITIAL_STATE);
 
   const [colors, setColors] = useState<ColorState>(() => createColorState(rules));
   const [intervalsByPeriod, setIntervalsByPeriod] = useState<PeriodIntervalsState>(() =>

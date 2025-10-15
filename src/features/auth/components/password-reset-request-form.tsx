@@ -1,6 +1,7 @@
 "use client";
 
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,7 @@ import { requestPasswordResetAction } from "@/features/auth/server/actions";
 const initialState: AuthActionState = { status: "idle" };
 
 export function PasswordResetRequestForm() {
-  const [state, formAction] = useFormState(requestPasswordResetAction, initialState);
+  const [state, formAction] = useActionState(requestPasswordResetAction, initialState);
 
   return (
     <form className="space-y-6" action={formAction}>
