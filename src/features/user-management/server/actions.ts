@@ -245,7 +245,7 @@ export async function updateUserAction(
 
   const updateData: Prisma.UserUpdateInput = {
     name: parsed.data.name.trim(),
-    email: parsed.data.email,
+    email: parsed.data.email.toLowerCase(),
     role: parsed.data.role,
     status: parsed.data.status,
   };
