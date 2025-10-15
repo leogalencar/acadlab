@@ -1,16 +1,20 @@
 "use client"
 
-import { ComponentProps, ReactNode } from "react"
+import { ReactNode } from "react"
+import { type VariantProps } from "class-variance-authority"
 
-import { Button } from "@/components/ui/button"
+import { buttonVariants } from "@/components/ui/button"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { cn } from "@/lib/utils"
 
 interface ConfirmationDialogProps {
   open: boolean
@@ -22,7 +26,7 @@ interface ConfirmationDialogProps {
   cancelLabel?: string
   onConfirm: () => void
   isConfirming?: boolean
-  confirmVariant?: ComponentProps<typeof Button>["variant"]
+  confirmVariant?: VariantProps<typeof buttonVariants>["variant"]
 }
 
 export function ConfirmationDialog({
@@ -38,30 +42,28 @@ export function ConfirmationDialog({
   confirmVariant = "destructive",
 }: ConfirmationDialogProps) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent className="sm:max-w-md">
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
           {typeof description === "string" ? (
-            <DialogDescription>{description}</DialogDescription>
+            <AlertDialogDescription>{description}</AlertDialogDescription>
           ) : (
             description
           )}
-        </DialogHeader>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isConfirming}>
-            {cancelLabel}
-          </Button>
-          <Button
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isConfirming}>{cancelLabel}</AlertDialogCancel>
+          <AlertDialogAction
             type="button"
-            variant={confirmVariant}
             onClick={onConfirm}
             disabled={isConfirming}
+            className={cn(buttonVariants({ variant: confirmVariant }))}
           >
             {isConfirming ? confirmingLabel ?? confirmLabel : confirmLabel}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }

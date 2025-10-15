@@ -343,14 +343,14 @@ function UserDialog({
     onOpenChange(nextOpen);
   };
 
+  const canDelete = mode === "edit" && user ? canManageRole(actorRole, user.role) : false;
+
   const requestDelete = () => {
     if (!user || !canDelete) {
       return;
     }
     setIsDeleteDialogOpen(true);
   };
-
-  const canDelete = mode === "edit" && user ? canManageRole(actorRole, user.role) : false;
 
   const handleDelete = () => {
     if (!user || !canDelete) {
