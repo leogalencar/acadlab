@@ -219,11 +219,10 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
 
   const handleEmailDomainBlur = (domainId: string) => {
     setEmailDomains((previous) => {
-      const sanitized = previous.map((domain) =>
-        domain.id === domainId
-          ? { ...domain, value: domain.value.trim().toLowerCase() }
-          : { ...domain, value: domain.value.trim().toLowerCase() },
-      );
+      const sanitized = previous.map((domain) => ({
+        ...domain,
+        value: domain.value.trim().toLowerCase(),
+      }));
 
       const seen = new Set<string>();
       const nextState: EmailDomainFormState[] = [];
