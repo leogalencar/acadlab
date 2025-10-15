@@ -217,7 +217,7 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
     );
   };
 
-  const handleEmailDomainBlur = (domainId: string) => {
+  const handleEmailDomainBlur = () => {
     setEmailDomains((previous) => {
       const sanitized = previous.map((domain) => ({
         ...domain,
@@ -408,7 +408,7 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
                     onChange={(event) =>
                       handleEmailDomainChange(domain.id, event.currentTarget.value)
                     }
-                    onBlur={() => handleEmailDomainBlur(domain.id)}
+                    onBlur={handleEmailDomainBlur}
                     placeholder="ex.: fatec.sp.gov.br"
                     autoComplete="off"
                     spellCheck={false}
