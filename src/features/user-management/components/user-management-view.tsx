@@ -372,8 +372,10 @@ function UserDialog({
   };
 
   const descriptionMap: Record<UserDialogProps["mode"], string> = {
-    create: "Informe os dados iniciais do usuário. Compartilhe a senha provisória com segurança.",
-    edit: "Atualize dados pessoais, perfil de acesso ou redefina a senha do usuário.",
+    create:
+      "Informe os dados iniciais do usuário. Uma senha provisória será enviada automaticamente ao e-mail informado.",
+    edit:
+      "Atualize dados pessoais, perfil de acesso ou status. A redefinição de senha deve ser solicitada pelo próprio usuário na página de login.",
     view: "Consulte os dados do usuário e acompanhe histórico de criação e atualização.",
   };
 
@@ -483,7 +485,7 @@ function UserForm({ mode, user, actorRole, allowedEmailDomains, onCompleted }: U
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className={cn("grid gap-4", mode === "edit" ? "md:grid-cols-2" : "md:grid-cols-1")}>
         <div className="grid gap-2">
           <Label htmlFor="user-role">Perfil de acesso</Label>
           <select
@@ -518,31 +520,17 @@ function UserForm({ mode, user, actorRole, allowedEmailDomains, onCompleted }: U
             </select>
           </div>
         ) : null}
-
-        <div className="grid gap-2">
-          <Label htmlFor="user-password">{mode === "create" ? "Senha provisória" : "Redefinir senha"}</Label>
-          <Input
-            id="user-password"
-            name="password"
-            type="password"
-            placeholder={mode === "create" ? "Mínimo 8 caracteres" : "Opcional"}
-            minLength={8}
-            required={mode === "create"}
-          />
-        </div>
-
-        <div className="grid gap-2">
-          <Label htmlFor="user-confirm-password">Confirmar senha</Label>
-          <Input
-            id="user-confirm-password"
-            name="confirmPassword"
-            type="password"
-            placeholder="Repita a senha"
-            minLength={8}
-            required={mode === "create"}
-          />
-        </div>
       </div>
+
+      {mode === "create" ? (
+        <div className="rounded-lg border border-dashed border-primary/40 bg-primary/5 p-4 text-sm text-primary">
+          Uma senha provisória será gerada automaticamente e enviada ao e-mail informado. Oriente o usuário a redefini-la no primeiro acesso.
+        </div>
+      ) : (
+        <div className="rounded-lg border border-border/70 bg-muted/40 p-4 text-xs text-muted-foreground">
+          A redefinição de senha deve ser feita pelo próprio usuário utilizando a opção “Esqueci minha senha” na página de login.
+        </div>
+      )}
 
       {formState.status === "error" ? (
         <p className="text-sm text-destructive">{formState.message ?? "Não foi possível salvar os dados."}</p>
