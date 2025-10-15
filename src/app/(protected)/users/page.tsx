@@ -82,6 +82,7 @@ export default async function UsersManagementPage({
       <UserManagementView
         users={users}
         actorRole={actorRole}
+        actorUserId={session.user.id}
         sorting={sorting}
         pagination={paginationState}
         availableRoles={availableRoles}

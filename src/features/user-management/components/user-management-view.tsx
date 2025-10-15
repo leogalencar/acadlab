@@ -46,6 +46,7 @@ const initialActionState: UserManagementActionState = { status: "idle" };
 interface UserManagementViewProps {
   users: SerializableUser[];
   actorRole: Role;
+  actorUserId: string;
   sorting: UserSortingState;
   pagination: UserPaginationState;
   availableRoles: Role[];
@@ -55,6 +56,7 @@ interface UserManagementViewProps {
 export function UserManagementView({
   users,
   actorRole,
+  actorUserId,
   sorting,
   pagination,
   availableRoles,
@@ -95,7 +97,7 @@ export function UserManagementView({
   };
 
   const handleRowClick = (user: SerializableUser) => {
-    const canEditUser = canManageRole(actorRole, user.role);
+    const canEditUser = canManageUser(actorRole, actorUserId, user);
     setDialogMode(canEditUser ? "edit" : "view");
     setSelectedUserId(user.id);
     setDialogOpen(true);
@@ -179,7 +181,7 @@ export function UserManagementView({
                   onClick={() => handleRowClick(user)}
                   className={cn(
                     "transition-colors",
-                    canManageRole(actorRole, user.role) && "cursor-pointer hover:bg-muted/60",
+                    canManageUser(actorRole, actorUserId, user) && "cursor-pointer hover:bg-muted/60",
                   )}
                 >
                   <td className="p-4 font-medium text-foreground">{user.name}</td>
@@ -269,6 +271,7 @@ export function UserManagementView({
         onOpenChange={handleDialogOpenChange}
         user={selectedUser}
         actorRole={actorRole}
+        actorUserId={actorUserId}
         allowedEmailDomains={allowedEmailDomains}
       />
     </div>
@@ -319,6 +322,7 @@ interface UserDialogProps {
   onOpenChange: (open: boolean) => void;
   user: SerializableUser | null;
   actorRole: Role;
+  actorUserId: string;
   allowedEmailDomains: string[];
 }
 
@@ -328,6 +332,7 @@ function UserDialog({
   onOpenChange,
   user,
   actorRole,
+  actorUserId,
   allowedEmailDomains,
 }: UserDialogProps) {
   const router = useRouter();
@@ -343,7 +348,8 @@ function UserDialog({
     onOpenChange(nextOpen);
   };
 
-  const canDelete = mode === "edit" && user ? canManageRole(actorRole, user.role) : false;
+  const isSelf = user?.id === actorUserId;
+  const canDelete = mode === "edit" && user ? canManageRole(actorRole, user.role) && !isSelf : false;
 
   const requestDelete = () => {
     if (!user || !canDelete) {
@@ -380,8 +386,10 @@ function UserDialog({
   };
 
   const descriptionMap: Record<UserDialogProps["mode"], string> = {
-    create: "Informe os dados iniciais do usuário. Compartilhe a senha provisória com segurança.",
-    edit: "Atualize dados pessoais, perfil de acesso ou redefina a senha do usuário.",
+    create:
+      "Informe os dados iniciais do usuário. Uma senha provisória será enviada automaticamente ao e-mail informado.",
+    edit:
+      "Atualize dados pessoais, perfil de acesso ou status. A redefinição de senha deve ser solicitada pelo próprio usuário na página de login.",
     view: "Consulte os dados do usuário e acompanhe histórico de criação e atualização.",
   };
 
@@ -401,6 +409,7 @@ function UserDialog({
               mode={mode}
               user={mode === "edit" ? user : null}
               actorRole={actorRole}
+              actorUserId={actorUserId}
               allowedEmailDomains={allowedEmailDomains}
               onCompleted={() => {
                 router.refresh();
@@ -454,22 +463,34 @@ interface UserFormProps {
   mode: "create" | "edit";
   user: SerializableUser | null;
   actorRole: Role;
+  actorUserId: string;
   allowedEmailDomains: string[];
   onCompleted: () => void;
 }
 
-function UserForm({ mode, user, actorRole, allowedEmailDomains, onCompleted }: UserFormProps) {
+function UserForm({ mode, user, actorRole, actorUserId, allowedEmailDomains, onCompleted }: UserFormProps) {
   const [formState, formAction, isPending] = useActionState(
     mode === "create" ? createUserAction : updateUserAction,
     initialActionState,
   );
   const assignableRoles = useMemo(() => getAssignableRoles(actorRole, user?.role), [actorRole, user?.role]);
+  const isSelf = user?.id === actorUserId;
 
   useEffect(() => {
     if (formState.status === "success") {
       onCompleted();
     }
   }, [formState.status, onCompleted]);
+
+  if (isSelf) {
+    return (
+      <div role="alert" className="rounded-md bg-muted/60 p-3">
+        <p className="text-sm text-muted-foreground">
+          Você não pode editar os seus próprios dados por este módulo.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <form action={formAction} className="space-y-4">
@@ -501,7 +522,7 @@ function UserForm({ mode, user, actorRole, allowedEmailDomains, onCompleted }: U
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className={cn("grid gap-4", mode === "edit" ? "md:grid-cols-2" : "md:grid-cols-1")}>
         <div className="grid gap-2">
           <Label htmlFor="user-role">Perfil de acesso</Label>
           <select
@@ -536,31 +557,17 @@ function UserForm({ mode, user, actorRole, allowedEmailDomains, onCompleted }: U
             </select>
           </div>
         ) : null}
-
-        <div className="grid gap-2">
-          <Label htmlFor="user-password">{mode === "create" ? "Senha provisória" : "Redefinir senha"}</Label>
-          <Input
-            id="user-password"
-            name="password"
-            type="password"
-            placeholder={mode === "create" ? "Mínimo 8 caracteres" : "Opcional"}
-            minLength={8}
-            required={mode === "create"}
-          />
-        </div>
-
-        <div className="grid gap-2">
-          <Label htmlFor="user-confirm-password">Confirmar senha</Label>
-          <Input
-            id="user-confirm-password"
-            name="confirmPassword"
-            type="password"
-            placeholder="Repita a senha"
-            minLength={8}
-            required={mode === "create"}
-          />
-        </div>
       </div>
+
+      {mode === "create" ? (
+        <div className="rounded-lg border border-dashed border-primary/40 bg-primary/5 p-4 text-sm text-primary">
+          Uma senha provisória será gerada automaticamente e enviada ao e-mail informado. Oriente o usuário a redefini-la no primeiro acesso.
+        </div>
+      ) : (
+        <div className="rounded-lg border border-border/70 bg-muted/40 p-4 text-xs text-muted-foreground">
+          A redefinição de senha deve ser feita pelo próprio usuário utilizando a opção “Esqueci minha senha” na página de login.
+        </div>
+      )}
 
       {formState.status === "error" ? (
         <p className="text-sm text-destructive">{formState.message ?? "Não foi possível salvar os dados."}</p>
@@ -650,4 +657,17 @@ function canManageRole(actorRole: Role, targetRole: Role) {
   }
 
   return false;
+}
+
+/**
+ * Determines whether the actor can manage a specific user account. Management is denied when
+ * the target user matches the actor to enforce the self-management restriction, even if the
+ * actor has a role that would otherwise grant permission (e.g., admin editing admin).
+ */
+function canManageUser(actorRole: Role, actorUserId: string, user: SerializableUser) {
+  if (user.id === actorUserId) {
+    return false;
+  }
+
+  return canManageRole(actorRole, user.role);
 }

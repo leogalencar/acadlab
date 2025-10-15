@@ -1,5 +1,6 @@
 "use server";
 
+import { randomBytes } from "crypto";
 import { hash } from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -11,6 +12,7 @@ import { Role, UserStatus } from "@prisma/client";
 import { getAllowedEmailDomains } from "@/features/system-rules/server/queries";
 import { extractEmailDomain } from "@/features/system-rules/utils";
 import { MANAGER_ROLES } from "@/features/shared/roles";
+import { sendNewUserPasswordEmail } from "@/features/user-management/server/email";
 
 export type UserManagementActionState = {
   status: "idle" | "success" | "error";
@@ -28,12 +30,6 @@ const createUserSchema = z
     role: z.nativeEnum(Role, {
       errorMap: () => ({ message: "Selecione um perfil de acesso válido." }),
     }),
-    password: z.string().min(8, "A senha deve ter pelo menos 8 caracteres."),
-    confirmPassword: z.string().min(8, "Confirme a senha com pelo menos 8 caracteres."),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "As senhas não conferem.",
-    path: ["confirmPassword"],
   });
 
 const updateUserSchema = z
@@ -51,41 +47,6 @@ const updateUserSchema = z
     status: z.nativeEnum(UserStatus, {
       errorMap: () => ({ message: "Selecione um status válido." }),
     }),
-    password: z.string().optional(),
-    confirmPassword: z.string().optional(),
-  })
-  .superRefine((data, ctx) => {
-    const wantsPasswordChange = Boolean(data.password && data.password.length > 0);
-    const providedConfirmPassword = Boolean(data.confirmPassword && data.confirmPassword.length > 0);
-
-    if (!wantsPasswordChange && !providedConfirmPassword) {
-      return;
-    }
-
-    if (!data.password || data.password.length < 8) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["password"],
-        message: "A nova senha deve ter pelo menos 8 caracteres.",
-      });
-    }
-
-    if (!data.confirmPassword) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["confirmPassword"],
-        message: "Confirme a nova senha.",
-      });
-      return;
-    }
-
-    if (data.password !== data.confirmPassword) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["confirmPassword"],
-        message: "As senhas não conferem.",
-      });
-    }
   });
 
 const deleteUserSchema = z.object({
@@ -114,8 +75,6 @@ export async function createUserAction(
     name: formData.get("name"),
     email: formData.get("email"),
     role: formData.get("role"),
-    password: formData.get("password"),
-    confirmPassword: formData.get("confirmPassword"),
   });
 
   if (!parsed.success) {
@@ -140,16 +99,26 @@ export async function createUserAction(
     };
   }
 
+  const sanitizedName = parsed.data.name.trim();
+  const sanitizedEmail = parsed.data.email.toLowerCase();
+  const temporaryPassword = generateTemporaryPassword();
+  const passwordHash = await hash(temporaryPassword, 12);
+
+  let createdUserId: string | null = null;
+
   try {
-    await prisma.user.create({
+    const createdUser = await prisma.user.create({
       data: {
-        name: parsed.data.name.trim(),
-        email: parsed.data.email.toLowerCase(),
+        name: sanitizedName,
+        email: sanitizedEmail,
         role: parsed.data.role,
         status: UserStatus.ACTIVE,
-        passwordHash: await hash(parsed.data.password, 12),
+        passwordHash,
       },
+      select: { id: true },
     });
+
+    createdUserId = createdUser.id;
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -164,10 +133,40 @@ export async function createUserAction(
     throw error;
   }
 
+  try {
+    await sendNewUserPasswordEmail({
+      name: sanitizedName,
+      email: sanitizedEmail,
+      temporaryPassword,
+    });
+  } catch (error) {
+    console.error("[user-management] Falha ao enviar senha provisória por e-mail.", error);
+
+    if (createdUserId) {
+      await prisma.user
+        .delete({ where: { id: createdUserId } })
+        .catch((deleteError) => {
+          console.error(
+            "[user-management] Falha ao remover usuário após erro no envio de e-mail.",
+            deleteError,
+          );
+        });
+    }
+
+    return {
+      status: "error",
+      message:
+        "Não foi possível enviar o e-mail com a senha provisória. Nenhuma conta foi criada. Tente novamente mais tarde.",
+    };
+  }
+
   revalidatePath("/users");
   revalidatePath("/dashboard");
 
-  return { status: "success", message: "Usuário cadastrado com sucesso." };
+  return {
+    status: "success",
+    message: "Usuário cadastrado com sucesso. Enviamos a senha provisória por e-mail.",
+  };
 }
 
 export async function updateUserAction(
@@ -194,8 +193,6 @@ export async function updateUserAction(
     email: formData.get("email"),
     role: formData.get("role"),
     status: formData.get("status"),
-    password: (formData.get("password") ?? undefined) as string | undefined,
-    confirmPassword: (formData.get("confirmPassword") ?? undefined) as string | undefined,
   });
 
   if (!parsed.success) {
@@ -212,6 +209,13 @@ export async function updateUserAction(
     return { status: "error", message: "Usuário não encontrado." };
   }
 
+  if (targetUser.id === session.user.id) {
+    return {
+      status: "error",
+      message: "Você não pode editar os seus próprios dados por este módulo.",
+    };
+  }
+
   if (!canManageRole(actorRole, targetUser.role)) {
     return {
       status: "error",
@@ -223,13 +227,6 @@ export async function updateUserAction(
     return {
       status: "error",
       message: "Você não possui permissão para atribuir este perfil de acesso.",
-    };
-  }
-
-  if (targetUser.id === session.user.id && parsed.data.role !== targetUser.role) {
-    return {
-      status: "error",
-      message: "Não é possível alterar o seu próprio perfil de acesso por este módulo.",
     };
   }
 
@@ -249,10 +246,6 @@ export async function updateUserAction(
     role: parsed.data.role,
     status: parsed.data.status,
   };
-
-  if (parsed.data.password && parsed.data.password.length > 0) {
-    updateData.passwordHash = await hash(parsed.data.password, 12);
-  }
 
   try {
     await prisma.user.update({
@@ -348,6 +341,23 @@ export async function deleteUserAction(formData: FormData): Promise<UserManageme
   revalidatePath("/dashboard");
 
   return { status: "success", message: "Usuário removido com sucesso." };
+}
+
+// Omit characters like 0/O and 1/l to avoid visually ambiguous passwords in emails.
+const TEMPORARY_PASSWORD_ALPHABET =
+  "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%";
+
+function generateTemporaryPassword(length = 12): string {
+  const randomBuffer = randomBytes(length);
+  const alphabetLength = TEMPORARY_PASSWORD_ALPHABET.length;
+
+  let password = "";
+  for (let index = 0; index < length; index += 1) {
+    const characterIndex = randomBuffer[index] % alphabetLength;
+    password += TEMPORARY_PASSWORD_ALPHABET[characterIndex];
+  }
+
+  return password;
 }
 
 function buildDisallowedDomainMessage(allowedDomains: string[]): string {

@@ -22,16 +22,12 @@ export interface SerializableLaboratory {
   createdAt: string;
   updatedAt: string;
   software: SerializableLaboratorySoftware[];
-  isAvailableForSelectedRange: boolean;
 }
 
 export interface LaboratoryFiltersState {
-  availableFrom?: string;
-  availableTo?: string;
   softwareIds: string[];
   statuses: LaboratoryStatus[];
-  minCapacity?: string;
-  maxCapacity?: string;
+  capacity?: string;
   search?: string;
   updatedFrom?: string;
   updatedTo?: string;

@@ -46,6 +46,7 @@ Read more in [`docs/user-management.md`](docs/user-management.md).
 ## Local Setup
 1. **Clone the repository** and `cd` into it.
 2. **Configure environment variables** (copy `.env.example` if available or define values such as `DATABASE_URL`, `ADMIN_EMAIL`, etc.).
+   - Preencha as variáveis `SMTP_*` para habilitar o envio de e-mails (senhas provisórias e recuperação de acesso). Sem elas, as mensagens ficam disponíveis apenas nos logs do servidor.
 3. **Install dependencies** (this automatically generates the Prisma client via the `postinstall` hook):
    ```bash
    pnpm install
