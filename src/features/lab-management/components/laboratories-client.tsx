@@ -494,6 +494,8 @@ function LaboratoryForm({ mode, laboratory, softwareCatalog, onCompleted }: Labo
     mode === "create" ? createLaboratoryAction : updateLaboratoryAction,
     idleActionState,
   );
+  const router = useRouter();
+  const [showQuickCreate, setShowQuickCreate] = useState(() => softwareCatalog.length === 0);
 
   useEffect(() => {
     if (formState.status === "success") {
@@ -555,7 +557,17 @@ function LaboratoryForm({ mode, laboratory, softwareCatalog, onCompleted }: Labo
             placeholder="Detalhes sobre infraestrutura, observações ou orientações."
           />
         </div>
-        {mode === "create" ? <SoftwareSelectionField softwareCatalog={softwareCatalog} /> : null}
+        {mode === "create" ? (
+          <SoftwareSelectionField
+            softwareCatalog={softwareCatalog}
+            showQuickCreate={showQuickCreate}
+            onToggleQuickCreate={() => setShowQuickCreate((prev) => !prev)}
+            onSoftwareCreated={() => {
+              setShowQuickCreate(false);
+              router.refresh();
+            }}
+          />
+        ) : null}
         {formState.status === "error" ? (
           <p className="text-sm text-destructive">{formState.message}</p>
         ) : null}
@@ -569,19 +581,40 @@ function LaboratoryForm({ mode, laboratory, softwareCatalog, onCompleted }: Labo
 
 function SoftwareSelectionField({
   softwareCatalog,
+  showQuickCreate,
+  onToggleQuickCreate,
+  onSoftwareCreated,
 }: {
   softwareCatalog: SerializableSoftware[];
+  showQuickCreate: boolean;
+  onToggleQuickCreate: () => void;
+  onSoftwareCreated: () => void;
 }) {
+  const hasSoftwareOptions = softwareCatalog.length > 0;
+
   return (
-    <fieldset className="space-y-3">
+    <fieldset className="space-y-4">
       <legend className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
         Softwares instalados
       </legend>
-      {softwareCatalog.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Cadastre softwares no catálogo para associá-los ao laboratório após o registro.
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+        <p className="text-muted-foreground">
+          {hasSoftwareOptions
+            ? "Selecione softwares já cadastrados ou cadastre novos itens no catálogo."
+            : "Nenhum software disponível ainda. Utilize o atalho para cadastrar softwares antes de concluir o registro."}
         </p>
-      ) : (
+        <Button variant="link" type="button" onClick={onToggleQuickCreate} className="h-auto p-0 text-sm">
+          {showQuickCreate ? "Ocultar atalho" : "Cadastrar novo software"}
+        </Button>
+      </div>
+      {showQuickCreate ? (
+        <SoftwareQuickCreate
+          onSuccess={() => {
+            onSoftwareCreated();
+          }}
+        />
+      ) : null}
+      {hasSoftwareOptions ? (
         <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-border/70 bg-muted/40 p-3 text-sm">
           {softwareCatalog.map((software) => {
             const checkboxId = `software-${software.id}`;
@@ -607,7 +640,7 @@ function SoftwareSelectionField({
             );
           })}
         </div>
-      )}
+      ) : null}
     </fieldset>
   );
 }
