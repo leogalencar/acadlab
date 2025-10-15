@@ -562,10 +562,6 @@ function LaboratoryForm({ mode, laboratory, softwareCatalog, onCompleted }: Labo
             softwareCatalog={softwareCatalog}
             showQuickCreate={showQuickCreate}
             onToggleQuickCreate={() => setShowQuickCreate((prev) => !prev)}
-            onSoftwareCreated={() => {
-              setShowQuickCreate(false);
-              router.refresh();
-            }}
           />
         ) : null}
         {formState.status === "error" ? (
@@ -575,6 +571,14 @@ function LaboratoryForm({ mode, laboratory, softwareCatalog, onCompleted }: Labo
           {isPending ? "Salvando..." : mode === "create" ? "Cadastrar laboratório" : "Salvar alterações"}
         </Button>
       </form>
+      {mode === "create" && showQuickCreate ? (
+        <SoftwareQuickCreate
+          onSuccess={() => {
+            setShowQuickCreate(false);
+            router.refresh();
+          }}
+        />
+      ) : null}
     </section>
   );
 }
@@ -583,12 +587,10 @@ function SoftwareSelectionField({
   softwareCatalog,
   showQuickCreate,
   onToggleQuickCreate,
-  onSoftwareCreated,
 }: {
   softwareCatalog: SerializableSoftware[];
   showQuickCreate: boolean;
   onToggleQuickCreate: () => void;
-  onSoftwareCreated: () => void;
 }) {
   const hasSoftwareOptions = softwareCatalog.length > 0;
 
@@ -603,17 +605,16 @@ function SoftwareSelectionField({
             ? "Selecione softwares já cadastrados ou cadastre novos itens no catálogo."
             : "Nenhum software disponível ainda. Utilize o atalho para cadastrar softwares antes de concluir o registro."}
         </p>
-        <Button variant="link" type="button" onClick={onToggleQuickCreate} className="h-auto p-0 text-sm">
+        <Button
+          variant="link"
+          type="button"
+          onClick={onToggleQuickCreate}
+          className="h-auto p-0 text-sm"
+          aria-expanded={showQuickCreate}
+        >
           {showQuickCreate ? "Ocultar atalho" : "Cadastrar novo software"}
         </Button>
       </div>
-      {showQuickCreate ? (
-        <SoftwareQuickCreate
-          onSuccess={() => {
-            onSoftwareCreated();
-          }}
-        />
-      ) : null}
       {hasSoftwareOptions ? (
         <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-border/70 bg-muted/40 p-3 text-sm">
           {softwareCatalog.map((software) => {
