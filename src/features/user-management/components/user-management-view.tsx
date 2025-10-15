@@ -45,6 +45,7 @@ const initialActionState: UserManagementActionState = { status: "idle" };
 interface UserManagementViewProps {
   users: SerializableUser[];
   actorRole: Role;
+  actorUserId: string;
   sorting: UserSortingState;
   pagination: UserPaginationState;
   availableRoles: Role[];
@@ -54,6 +55,7 @@ interface UserManagementViewProps {
 export function UserManagementView({
   users,
   actorRole,
+  actorUserId,
   sorting,
   pagination,
   availableRoles,
@@ -94,7 +96,7 @@ export function UserManagementView({
   };
 
   const handleRowClick = (user: SerializableUser) => {
-    const canEditUser = canManageRole(actorRole, user.role);
+    const canEditUser = canManageUser(actorRole, actorUserId, user);
     setDialogMode(canEditUser ? "edit" : "view");
     setSelectedUserId(user.id);
     setDialogOpen(true);
@@ -178,7 +180,7 @@ export function UserManagementView({
                   onClick={() => handleRowClick(user)}
                   className={cn(
                     "transition-colors",
-                    canManageRole(actorRole, user.role) && "cursor-pointer hover:bg-muted/60",
+                    canManageUser(actorRole, actorUserId, user) && "cursor-pointer hover:bg-muted/60",
                   )}
                 >
                   <td className="p-4 font-medium text-foreground">{user.name}</td>
@@ -268,6 +270,7 @@ export function UserManagementView({
         onOpenChange={handleDialogOpenChange}
         user={selectedUser}
         actorRole={actorRole}
+        actorUserId={actorUserId}
         allowedEmailDomains={allowedEmailDomains}
       />
     </div>
@@ -318,6 +321,7 @@ interface UserDialogProps {
   onOpenChange: (open: boolean) => void;
   user: SerializableUser | null;
   actorRole: Role;
+  actorUserId: string;
   allowedEmailDomains: string[];
 }
 
@@ -327,6 +331,7 @@ function UserDialog({
   onOpenChange,
   user,
   actorRole,
+  actorUserId,
   allowedEmailDomains,
 }: UserDialogProps) {
   const router = useRouter();
@@ -340,7 +345,8 @@ function UserDialog({
     onOpenChange(nextOpen);
   };
 
-  const canDelete = mode === "edit" && user ? canManageRole(actorRole, user.role) : false;
+  const isSelf = user?.id === actorUserId;
+  const canDelete = mode === "edit" && user ? canManageRole(actorRole, user.role) && !isSelf : false;
 
   const handleDelete = () => {
     if (!user || !canDelete) {
@@ -393,6 +399,7 @@ function UserDialog({
               mode={mode}
               user={mode === "edit" ? user : null}
               actorRole={actorRole}
+              actorUserId={actorUserId}
               allowedEmailDomains={allowedEmailDomains}
               onCompleted={() => {
                 router.refresh();
@@ -436,22 +443,32 @@ interface UserFormProps {
   mode: "create" | "edit";
   user: SerializableUser | null;
   actorRole: Role;
+  actorUserId: string;
   allowedEmailDomains: string[];
   onCompleted: () => void;
 }
 
-function UserForm({ mode, user, actorRole, allowedEmailDomains, onCompleted }: UserFormProps) {
+function UserForm({ mode, user, actorRole, actorUserId, allowedEmailDomains, onCompleted }: UserFormProps) {
   const [formState, formAction, isPending] = useActionState(
     mode === "create" ? createUserAction : updateUserAction,
     initialActionState,
   );
   const assignableRoles = useMemo(() => getAssignableRoles(actorRole, user?.role), [actorRole, user?.role]);
+  const isSelf = user?.id === actorUserId;
 
   useEffect(() => {
     if (formState.status === "success") {
       onCompleted();
     }
   }, [formState.status, onCompleted]);
+
+  if (isSelf) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Você não pode editar os seus próprios dados por este módulo.
+      </p>
+    );
+  }
 
   return (
     <form action={formAction} className="space-y-4">
@@ -632,4 +649,12 @@ function canManageRole(actorRole: Role, targetRole: Role) {
   }
 
   return false;
+}
+
+function canManageUser(actorRole: Role, actorUserId: string, user: SerializableUser) {
+  if (user.id === actorUserId) {
+    return false;
+  }
+
+  return canManageRole(actorRole, user.role);
 }
