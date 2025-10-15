@@ -184,6 +184,12 @@ async function ensureSystemRules() {
     JSON.stringify(DEFAULT_SYSTEM_RULES_MINUTES.schedule),
   ) as Prisma.InputJsonValue;
 
+  const emailDomainsPayload = JSON.parse(
+    JSON.stringify({
+      domains: DEFAULT_SYSTEM_RULES_MINUTES.account.allowedEmailDomains,
+    }),
+  ) as Prisma.InputJsonValue;
+
   await prisma.$transaction([
     prisma.systemRule.upsert({
       where: { name: SYSTEM_RULE_NAMES.COLORS },
@@ -199,6 +205,14 @@ async function ensureSystemRules() {
       create: {
         name: SYSTEM_RULE_NAMES.SCHEDULE,
         value: schedulePayload,
+      },
+    }),
+    prisma.systemRule.upsert({
+      where: { name: SYSTEM_RULE_NAMES.EMAIL_DOMAINS },
+      update: { value: emailDomainsPayload },
+      create: {
+        name: SYSTEM_RULE_NAMES.EMAIL_DOMAINS,
+        value: emailDomainsPayload,
       },
     }),
   ]);

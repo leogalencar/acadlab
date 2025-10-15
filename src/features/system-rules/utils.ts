@@ -70,6 +70,16 @@ export function buildPaletteCssVariables(colors: {
   };
 }
 
+export function extractEmailDomain(email: string): string | null {
+  const atIndex = email.lastIndexOf("@");
+
+  if (atIndex < 0 || atIndex === email.length - 1) {
+    return null;
+  }
+
+  return email.slice(atIndex + 1).toLowerCase();
+}
+
 function parseHexColor(hexColor: string): [number, number, number] {
   const sanitized = hexColor.trim().toLowerCase();
   const match = sanitized.match(/^#?([0-9a-f]{6})$/);

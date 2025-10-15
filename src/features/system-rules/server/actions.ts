@@ -61,6 +61,22 @@ const intervalSchema = z.object({
   durationMinutes: intervalDurationSchema,
 });
 
+const emailDomainRegex = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i;
+
+const emailDomainSchema = z
+  .string()
+  .trim()
+  .min(1, "Informe um domínio de e-mail.")
+  .transform((value) => value.toLowerCase())
+  .refine((value) => emailDomainRegex.test(value), {
+    message: "Informe um domínio válido (ex.: fatec.sp.gov.br).",
+  });
+
+const emailDomainListSchema = z
+  .array(emailDomainSchema)
+  .min(1, "Defina ao menos um domínio de e-mail permitido.")
+  .max(20, "Cadastre no máximo 20 domínios permitidos.");
+
 const periodSchema = z
   .object({
     firstClassTime: timeSchema,
@@ -147,6 +163,7 @@ const systemRulesSchema = z
     primaryColor: colorSchema,
     secondaryColor: colorSchema,
     accentColor: colorSchema,
+    allowedEmailDomains: emailDomainListSchema,
     morning: periodSchema,
     afternoon: periodSchema,
     evening: periodSchema,
@@ -235,6 +252,7 @@ export async function updateSystemRulesAction(
     primaryColor: getStringValue(formData, "primaryColor"),
     secondaryColor: getStringValue(formData, "secondaryColor"),
     accentColor: getStringValue(formData, "accentColor"),
+    allowedEmailDomains: extractAllowedDomains(formData),
     morning: buildPeriodFormPayload(formData, "morning"),
     afternoon: buildPeriodFormPayload(formData, "afternoon"),
     evening: buildPeriodFormPayload(formData, "evening"),
@@ -251,6 +269,12 @@ export async function updateSystemRulesAction(
     primaryColor: data.primaryColor,
     secondaryColor: data.secondaryColor,
     accentColor: data.accentColor,
+  };
+
+  const normalizedEmailDomains = Array.from(new Set(data.allowedEmailDomains));
+
+  const emailDomainsPayload = {
+    domains: normalizedEmailDomains,
   };
 
   const schedulePayload = {
@@ -281,6 +305,14 @@ export async function updateSystemRulesAction(
           value: schedulePayload,
         },
       }),
+      prisma.systemRule.upsert({
+        where: { name: SYSTEM_RULE_NAMES.EMAIL_DOMAINS },
+        update: { value: emailDomainsPayload },
+        create: {
+          name: SYSTEM_RULE_NAMES.EMAIL_DOMAINS,
+          value: emailDomainsPayload,
+        },
+      }),
     ]);
   } catch (error) {
     console.error("[system-rules] Failed to update rules", error);
@@ -292,6 +324,7 @@ export async function updateSystemRulesAction(
 
   revalidatePath("/system-rules");
   revalidatePath("/", "layout");
+  revalidatePath("/users");
 
   return {
     status: "success",
@@ -349,6 +382,14 @@ function extractIntervalFormValues(formData: FormData, period: PeriodId) {
       start: record.start ?? "",
       durationMinutes: record.durationMinutes ?? "",
     }));
+}
+
+function extractAllowedDomains(formData: FormData): string[] {
+  return formData
+    .getAll("allowedEmailDomains")
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => value.length > 0);
 }
 
 function mapPeriodForPersistence(period: PeriodSchemaOutput) {

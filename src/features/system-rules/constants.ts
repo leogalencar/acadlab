@@ -7,9 +7,15 @@ export const MINUTES_PER_DAY = 24 * 60;
 export const SYSTEM_RULE_NAMES = {
   COLORS: "ui.colors",
   SCHEDULE: "schedule.periods",
+  EMAIL_DOMAINS: "account.allowedEmailDomains",
 } as const;
 
 export type SystemRuleName = (typeof SYSTEM_RULE_NAMES)[keyof typeof SYSTEM_RULE_NAMES];
+
+export const DEFAULT_ALLOWED_EMAIL_DOMAINS = [
+  "acadlab.local",
+  "fatec.sp.gov.br",
+] as const;
 
 type IntervalRuleMinutes = {
   start: number;
@@ -69,5 +75,8 @@ export const DEFAULT_SYSTEM_RULES_MINUTES = {
   colors: DEFAULT_COLOR_RULES,
   schedule: {
     periods: DEFAULT_PERIOD_RULES_MINUTES,
+  },
+  account: {
+    allowedEmailDomains: DEFAULT_ALLOWED_EMAIL_DOMAINS,
   },
 } as const;

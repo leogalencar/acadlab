@@ -17,6 +17,7 @@ export interface SerializableSystemRules {
   secondaryColor: string;
   accentColor: string;
   periods: Record<PeriodId, PeriodRuleInput>;
+  allowedEmailDomains: string[];
   updatedAt?: string;
 }
 

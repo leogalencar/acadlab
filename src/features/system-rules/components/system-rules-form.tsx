@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  DEFAULT_ALLOWED_EMAIL_DOMAINS,
   DEFAULT_COLOR_RULES,
   DEFAULT_PERIOD_RULES_MINUTES,
   PERIOD_IDS,
@@ -78,6 +79,11 @@ type PeriodFieldsState = Record<PeriodId, PeriodFieldState>;
 
 type PeriodFieldKey = keyof PeriodFieldState;
 
+interface EmailDomainFormState {
+  id: string;
+  value: string;
+}
+
 export function SystemRulesForm({ rules }: SystemRulesFormProps) {
   const [state, formAction] = useActionState(updateSystemRulesAction, FORM_INITIAL_STATE);
 
@@ -88,6 +94,9 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
   const [periodFields, setPeriodFields] = useState<PeriodFieldsState>(() =>
     createPeriodFieldsState(rules),
   );
+  const [emailDomains, setEmailDomains] = useState<EmailDomainFormState[]>(() =>
+    createEmailDomainState(rules),
+  );
 
   const paletteBaseRef = useRef<Record<string, string> | null>(null);
 
@@ -95,6 +104,7 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
     setColors(createColorState(rules));
     setIntervalsByPeriod(createIntervalsState(rules));
     setPeriodFields(createPeriodFieldsState(rules));
+    setEmailDomains(createEmailDomainState(rules));
   }, [rules]);
 
   useEffect(() => {
@@ -198,6 +208,65 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
     }));
   };
 
+  const handleEmailDomainChange = (domainId: string, value: string) => {
+    const normalized = value.toLowerCase();
+    setEmailDomains((previous) =>
+      previous.map((domain) =>
+        domain.id === domainId ? { ...domain, value: normalized } : domain,
+      ),
+    );
+  };
+
+  const handleEmailDomainBlur = (domainId: string) => {
+    setEmailDomains((previous) => {
+      const sanitized = previous.map((domain) =>
+        domain.id === domainId
+          ? { ...domain, value: domain.value.trim().toLowerCase() }
+          : { ...domain, value: domain.value.trim().toLowerCase() },
+      );
+
+      const seen = new Set<string>();
+      const nextState: EmailDomainFormState[] = [];
+
+      for (const domain of sanitized) {
+        if (!domain.value) {
+          nextState.push(domain);
+          continue;
+        }
+
+        if (seen.has(domain.value)) {
+          continue;
+        }
+
+        seen.add(domain.value);
+        nextState.push(domain);
+      }
+
+      return nextState.length > 0 ? nextState : [{ id: generateDomainId(), value: "" }];
+    });
+  };
+
+  const handleAddEmailDomain = () => {
+    setEmailDomains((previous) => [
+      ...previous,
+      { id: generateDomainId(), value: "" },
+    ]);
+  };
+
+  const handleRemoveEmailDomain = (domainId: string) => {
+    setEmailDomains((previous) => {
+      const remaining = previous.filter((domain) => domain.id !== domainId);
+      if (remaining.length === 0) {
+        return [{ id: generateDomainId(), value: "" }];
+      }
+      return remaining;
+    });
+  };
+
+  const handleRestoreEmailDomains = () => {
+    setEmailDomains(createDefaultEmailDomainState());
+  };
+
   const handleIntervalChange = (
     period: PeriodId,
     intervalId: string,
@@ -260,6 +329,7 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
     setColors(createDefaultColorState());
     setPeriodFields(createDefaultPeriodFieldsState());
     setIntervalsByPeriod(createDefaultIntervalsState());
+    setEmailDomains(createDefaultEmailDomainState());
   };
 
   return (
@@ -301,6 +371,66 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
             value={colors.accent}
             onValueChange={handleColorChange("accent")}
           />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1">
+            <CardTitle className="text-xl">Domínios de e-mail permitidos</CardTitle>
+            <CardDescription>
+              Restrinja o cadastro de usuários aos domínios institucionais autorizados.
+            </CardDescription>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleRestoreEmailDomains}
+          >
+            Restaurar domínios padrão
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <HelperText>
+            Somente endereços que terminarem com os domínios abaixo poderão ser cadastrados.
+          </HelperText>
+          <div className="space-y-4">
+            {emailDomains.map((domain, index) => (
+              <div key={domain.id} className="space-y-2">
+                <Label htmlFor={`allowedEmailDomains-${domain.id}`}>
+                  Domínio permitido {index + 1}
+                </Label>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Input
+                    id={`allowedEmailDomains-${domain.id}`}
+                    name="allowedEmailDomains"
+                    value={domain.value}
+                    onChange={(event) =>
+                      handleEmailDomainChange(domain.id, event.currentTarget.value)
+                    }
+                    onBlur={() => handleEmailDomainBlur(domain.id)}
+                    placeholder="ex.: fatec.sp.gov.br"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleRemoveEmailDomain(domain.id)}
+                    aria-label={`Remover domínio ${index + 1}`}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={handleAddEmailDomain}>
+            <Plus className="mr-2 size-4" />
+            Adicionar domínio
+          </Button>
         </CardContent>
       </Card>
 
@@ -703,12 +833,37 @@ function createDefaultPeriodFieldState(period: PeriodId): PeriodFieldState {
   };
 }
 
+function createEmailDomainState(rules: SerializableSystemRules): EmailDomainFormState[] {
+  return mapDomainsToState(rules.allowedEmailDomains);
+}
+
+function createDefaultEmailDomainState(): EmailDomainFormState[] {
+  return mapDomainsToState([...DEFAULT_ALLOWED_EMAIL_DOMAINS]);
+}
+
+function mapDomainsToState(domains: ReadonlyArray<string>): EmailDomainFormState[] {
+  const source = domains.length > 0 ? domains : [""];
+
+  return source.map((domain) => ({
+    id: generateDomainId(),
+    value: domain,
+  }));
+}
+
 function generateIntervalId(period: PeriodId): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return `${period}-${crypto.randomUUID()}`;
   }
 
   return `${period}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function generateDomainId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `domain-${crypto.randomUUID()}`;
+  }
+
+  return `domain-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function normalizeHexColor(value: string): string {

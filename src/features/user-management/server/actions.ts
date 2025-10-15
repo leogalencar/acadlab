@@ -8,6 +8,8 @@ import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { Role, UserStatus } from "@prisma/client";
+import { getAllowedEmailDomains } from "@/features/system-rules/server/queries";
+import { extractEmailDomain } from "@/features/system-rules/utils";
 import { MANAGER_ROLES } from "@/features/shared/roles";
 
 export type UserManagementActionState = {
@@ -18,7 +20,11 @@ export type UserManagementActionState = {
 const createUserSchema = z
   .object({
     name: z.string().min(1, "Informe o nome completo."),
-    email: z.string().email("Informe um e-mail válido."),
+    email: z
+      .string()
+      .trim()
+      .email("Informe um e-mail válido.")
+      .transform((value) => value.toLowerCase()),
     role: z.nativeEnum(Role, {
       errorMap: () => ({ message: "Selecione um perfil de acesso válido." }),
     }),
@@ -34,7 +40,11 @@ const updateUserSchema = z
   .object({
     userId: z.string().min(1, "Usuário inválido."),
     name: z.string().min(1, "Informe o nome completo."),
-    email: z.string().email("Informe um e-mail válido."),
+    email: z
+      .string()
+      .trim()
+      .email("Informe um e-mail válido.")
+      .transform((value) => value.toLowerCase()),
     role: z.nativeEnum(Role, {
       errorMap: () => ({ message: "Selecione um perfil de acesso válido." }),
     }),
@@ -120,11 +130,21 @@ export async function createUserAction(
     };
   }
 
+  const allowedDomains = await getAllowedEmailDomains();
+  const emailDomain = extractEmailDomain(parsed.data.email);
+
+  if (!emailDomain || !allowedDomains.includes(emailDomain)) {
+    return {
+      status: "error",
+      message: buildDisallowedDomainMessage(allowedDomains),
+    };
+  }
+
   try {
     await prisma.user.create({
       data: {
         name: parsed.data.name.trim(),
-        email: parsed.data.email.toLowerCase(),
+        email: parsed.data.email,
         role: parsed.data.role,
         status: UserStatus.ACTIVE,
         passwordHash: await hash(parsed.data.password, 12),
@@ -213,9 +233,19 @@ export async function updateUserAction(
     };
   }
 
+  const allowedDomains = await getAllowedEmailDomains();
+  const emailDomain = extractEmailDomain(parsed.data.email);
+
+  if (!emailDomain || !allowedDomains.includes(emailDomain)) {
+    return {
+      status: "error",
+      message: buildDisallowedDomainMessage(allowedDomains),
+    };
+  }
+
   const updateData: Prisma.UserUpdateInput = {
     name: parsed.data.name.trim(),
-    email: parsed.data.email.toLowerCase(),
+    email: parsed.data.email,
     role: parsed.data.role,
     status: parsed.data.status,
   };
@@ -318,6 +348,19 @@ export async function deleteUserAction(formData: FormData): Promise<UserManageme
   revalidatePath("/dashboard");
 
   return { status: "success", message: "Usuário removido com sucesso." };
+}
+
+function buildDisallowedDomainMessage(allowedDomains: string[]): string {
+  if (allowedDomains.length === 0) {
+    return "Não há domínios de e-mail permitidos configurados. Entre em contato com um administrador.";
+  }
+
+  if (allowedDomains.length === 1) {
+    return `Somente endereços @${allowedDomains[0]} podem ser cadastrados.`;
+  }
+
+  const formatted = allowedDomains.map((domain) => `@${domain}`).join(", ");
+  return `Informe um e-mail institucional com os domínios permitidos: ${formatted}.`;
 }
 
 function canManageUsers(role: Role) {

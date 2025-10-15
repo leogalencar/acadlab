@@ -20,31 +20,50 @@ type ColorRuleValues = {
   accentColor: string;
 };
 
+type EmailDomainRuleValues = {
+  domains: string[];
+};
+
 export async function getSystemRules(): Promise<SerializableSystemRules> {
   const fallback = mapToSerializable(
     DEFAULT_SYSTEM_RULES_MINUTES.schedule,
     DEFAULT_SYSTEM_RULES_MINUTES.colors,
+    { domains: [...DEFAULT_SYSTEM_RULES_MINUTES.account.allowedEmailDomains] },
   );
 
   try {
     const records = await prisma.systemRule.findMany({
       where: {
         name: {
-          in: [SYSTEM_RULE_NAMES.COLORS, SYSTEM_RULE_NAMES.SCHEDULE],
+          in: [
+            SYSTEM_RULE_NAMES.COLORS,
+            SYSTEM_RULE_NAMES.SCHEDULE,
+            SYSTEM_RULE_NAMES.EMAIL_DOMAINS,
+          ],
         },
       },
     });
 
     const colorsRecord = records.find((entry) => entry.name === SYSTEM_RULE_NAMES.COLORS);
     const scheduleRecord = records.find((entry) => entry.name === SYSTEM_RULE_NAMES.SCHEDULE);
+    const emailDomainsRecord = records.find(
+      (entry) => entry.name === SYSTEM_RULE_NAMES.EMAIL_DOMAINS,
+    );
 
     const colors = parseColorsValue(colorsRecord?.value) ?? DEFAULT_SYSTEM_RULES_MINUTES.colors;
     const schedule =
       parseScheduleValue(scheduleRecord?.value) ?? DEFAULT_SYSTEM_RULES_MINUTES.schedule;
+    const emailDomains =
+      parseEmailDomainsValue(emailDomainsRecord?.value) ??
+      { domains: [...DEFAULT_SYSTEM_RULES_MINUTES.account.allowedEmailDomains] };
 
-    const latestUpdate = getLatestDate(colorsRecord?.updatedAt, scheduleRecord?.updatedAt);
+    const latestUpdate = getLatestDate(
+      colorsRecord?.updatedAt,
+      scheduleRecord?.updatedAt,
+      emailDomainsRecord?.updatedAt,
+    );
 
-    const result = mapToSerializable(schedule, colors);
+    const result = mapToSerializable(schedule, colors, emailDomains);
 
     if (latestUpdate) {
       result.updatedAt = latestUpdate.toISOString();
@@ -59,9 +78,29 @@ export async function getSystemRules(): Promise<SerializableSystemRules> {
   }
 }
 
+export async function getAllowedEmailDomains(): Promise<string[]> {
+  try {
+    const record = await prisma.systemRule.findUnique({
+      where: { name: SYSTEM_RULE_NAMES.EMAIL_DOMAINS },
+    });
+
+    const parsed =
+      parseEmailDomainsValue(record?.value) ??
+      ({ domains: [...DEFAULT_SYSTEM_RULES_MINUTES.account.allowedEmailDomains] } as EmailDomainRuleValues);
+
+    return [...parsed.domains];
+  } catch {
+    console.warn(
+      "[system-rules] Database indisponível durante a leitura dos domínios permitidos. Utilizando padrões.",
+    );
+    return [...DEFAULT_SYSTEM_RULES_MINUTES.account.allowedEmailDomains];
+  }
+}
+
 function mapToSerializable(
   schedule: ScheduleRuleMinutes,
   colors: ColorRuleValues,
+  emailDomains: EmailDomainRuleValues,
 ): SerializableSystemRules {
   const periods = PERIOD_IDS.reduce((accumulator, period) => {
     const persisted = schedule.periods[period] ?? DEFAULT_PERIOD_RULES_MINUTES[period];
@@ -84,6 +123,7 @@ function mapToSerializable(
     secondaryColor: colors.secondaryColor,
     accentColor: colors.accentColor,
     periods,
+    allowedEmailDomains: [...emailDomains.domains],
   };
 }
 
@@ -112,6 +152,32 @@ function parseColorsValue(
   }
 
   return null;
+}
+
+function parseEmailDomainsValue(
+  value: Prisma.JsonValue | null | undefined,
+): EmailDomainRuleValues | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const rawDomains = record.domains;
+
+  if (!Array.isArray(rawDomains)) {
+    return null;
+  }
+
+  const domains = rawDomains
+    .filter((candidate): candidate is string => typeof candidate === "string")
+    .map((domain) => domain.trim().toLowerCase())
+    .filter((domain) => domain.length > 0);
+
+  if (domains.length === 0) {
+    return null;
+  }
+
+  return { domains: Array.from(new Set(domains)) };
 }
 
 function parseScheduleValue(
