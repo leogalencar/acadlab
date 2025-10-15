@@ -24,7 +24,9 @@ function resolveTransporter() {
     return transporter;
   }
 
-  const port = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : secure ? 465 : 587;
+  const resolvedPort = process.env.SMTP_PORT;
+  const defaultPort = secure ? 465 : 587;
+  const port = resolvedPort ? Number(resolvedPort) : defaultPort;
   const authUser = process.env.SMTP_USER;
   const authPassword = process.env.SMTP_PASSWORD;
 

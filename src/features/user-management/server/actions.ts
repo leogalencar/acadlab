@@ -1,7 +1,6 @@
 "use server";
 
 import { randomBytes } from "crypto";
-
 import { hash } from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -344,6 +343,7 @@ export async function deleteUserAction(formData: FormData): Promise<UserManageme
   return { status: "success", message: "Usuário removido com sucesso." };
 }
 
+// Omit characters like 0/O and 1/l to avoid visually ambiguous passwords in emails.
 const TEMPORARY_PASSWORD_ALPHABET =
   "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%";
 
