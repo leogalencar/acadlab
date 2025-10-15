@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import type { LaboratoryPaginationState, LaboratorySortingState, LaboratorySortField, SerializableLaboratory } from "@/features/lab-management/types";
 import { idleActionState, type ActionState } from "@/features/shared/types";
 import { PAGE_SIZE_OPTIONS } from "@/features/shared/table";
+import { ConfirmationDialog } from "@/features/shared/components/confirmation-dialog";
 import {
   assignSoftwareToLaboratoryAction,
   createLaboratoryAction,
@@ -387,33 +388,29 @@ function LaboratoryDialog({ mode, open, onOpenChange, laboratory, softwareCatalo
   const [showQuickCreate, setShowQuickCreate] = useState(() =>
     shouldAutoOpenQuickCreate(mode, softwareCatalog.length),
   );
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const handleClose = (nextOpen: boolean) => {
     if (!nextOpen) {
       setDeleteFeedback(null);
+      setIsDeleteDialogOpen(false);
     }
     onOpenChange(nextOpen);
   };
 
-  useEffect(() => {
-    if (shouldAutoOpenQuickCreate(mode, softwareCatalog.length)) {
-      setShowQuickCreate(true);
-      return;
-    }
-
-    if (mode !== "create") {
-      setShowQuickCreate(false);
-    }
-  }, [mode, softwareCatalog.length]);
-
-  const handleDelete = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const requestDelete = () => {
     if (!laboratory) {
       return;
     }
-    if (!window.confirm(`Remover o laboratório ${laboratory.name}? Esta ação não pode ser desfeita.`)) {
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleDelete = () => {
+    if (!laboratory) {
       return;
     }
+
+    setIsDeleteDialogOpen(false);
 
     const formData = new FormData();
     formData.set("laboratoryId", laboratory.id);
@@ -496,14 +493,24 @@ function LaboratoryDialog({ mode, open, onOpenChange, laboratory, softwareCatalo
               <p className="text-sm text-muted-foreground">
                 Esta ação remove o laboratório e todas as associações de software. Reservas existentes não são alteradas.
               </p>
-              <form onSubmit={handleDelete} className="flex flex-col gap-2">
-                <Button type="submit" variant="destructive" disabled={isDeleting}>
+              <div className="flex flex-col gap-2">
+                <Button type="button" variant="destructive" onClick={requestDelete} disabled={isDeleting}>
                   {isDeleting ? "Removendo..." : "Remover laboratório"}
                 </Button>
                 {deleteFeedback?.status === "error" ? (
                   <p className="text-sm text-destructive">{deleteFeedback.message}</p>
                 ) : null}
-              </form>
+                <ConfirmationDialog
+                  open={isDeleteDialogOpen}
+                  onOpenChange={setIsDeleteDialogOpen}
+                  title="Remover laboratório"
+                  description={`Remover o laboratório ${laboratory.name}? Esta ação não pode ser desfeita.`}
+                  confirmLabel="Remover"
+                  confirmingLabel="Removendo..."
+                  onConfirm={handleDelete}
+                  isConfirming={isDeleting}
+                />
+              </div>
             </section>
           ) : null}
         </div>
