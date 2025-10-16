@@ -866,11 +866,13 @@ function generateDomainId(): string {
 }
 
 function normalizeHexColor(value: string): string {
-  const trimmed = value.trim().toUpperCase();
-
-  if (trimmed.startsWith("#")) {
-    return trimmed;
-  }
-
-  return `#${trimmed}`;
+  // Remove all leading #, uppercase, and ensure a single leading #
+  const hex = value.trim().replace(/^#+/, "").toUpperCase();
+  // Only allow 3 or 6 hex digits (shorthand or full), fallback to empty if invalid
+  const validHex = /^[0-9A-F]{3}$/.test(hex)
+    ? hex
+    : /^[0-9A-F]{6}$/.test(hex)
+    ? hex
+    : hex.slice(0, 6); // fallback: truncate to 6 chars
+  return `#${validHex}`;
 }
