@@ -40,7 +40,7 @@ export const DASHBOARD_MODULES: DashboardModule[] = [
     href: "/dashboard/scheduling",
     roles: ALL_ROLES,
     icon: ClipboardList,
-    status: "coming-soon",
+    status: "available",
   },
   {
     id: "software-maintenance",

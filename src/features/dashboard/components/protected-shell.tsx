@@ -169,6 +169,8 @@ function buildBreadcrumbItems(segments: string[]) {
     dashboard: "Painel",
     laboratories: "Laboratórios",
     scheduling: "Agenda",
+    agenda: "Minha agenda",
+    history: "Histórico de reservas",
     software: "Softwares",
     profile: "Meu perfil",
     users: "Usuários",
