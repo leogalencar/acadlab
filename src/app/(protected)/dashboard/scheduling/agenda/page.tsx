@@ -21,5 +21,11 @@ export default async function AgendaPage() {
     role: session.user.role,
   });
 
-  return <AgendaList reservations={reservations} actorRole={session.user.role} />;
+  return (
+    <AgendaList
+      reservations={reservations}
+      actorRole={session.user.role}
+      currentUserId={session.user.id}
+    />
+  );
 }
