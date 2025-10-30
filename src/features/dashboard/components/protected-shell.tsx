@@ -1,17 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { Role } from "@prisma/client";
-import type { LucideIcon } from "lucide-react";
 import { ChevronRight, Lock } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import {
-  DASHBOARD_NAV_ITEMS,
-  type DashboardModule,
-} from "@/features/dashboard/constants/modules";
+import { DASHBOARD_NAV_ITEMS, type DashboardNavItem } from "@/features/dashboard/constants/modules";
 import { AccountMenu } from "@/features/dashboard/components/account-menu";
 
 interface ProtectedShellProps {
@@ -23,13 +19,50 @@ interface ProtectedShellProps {
 export function ProtectedShell({ userName, role, children }: ProtectedShellProps) {
   const pathname = usePathname();
 
-  const navItems = useMemo(
-    () =>
-      DASHBOARD_NAV_ITEMS.filter((item) =>
-        item.roles.includes(role),
-      ),
-    [role],
-  );
+  const navItems = useMemo(() => {
+    const items: DashboardNavItem[] = [];
+
+    DASHBOARD_NAV_ITEMS.forEach((item) => {
+      const children = item.children?.filter((child) => child.roles.includes(role)) ?? [];
+      const allowed = item.roles.includes(role) || children.length > 0;
+
+      if (!allowed) {
+        return;
+      }
+
+      items.push({
+        ...item,
+        children,
+      });
+    });
+
+    return items;
+  }, [role]);
+
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => {
+    const defaults: Record<string, boolean> = {};
+    navItems.forEach((item) => {
+      if (item.children?.length) {
+        defaults[item.id] = item.children.some((child) => isActive(pathname, child.href));
+      }
+    });
+    return defaults;
+  });
+
+  useEffect(() => {
+    setExpandedGroups((previous) => {
+      const next = { ...previous };
+      navItems.forEach((item) => {
+        if (item.children?.length) {
+          const shouldExpand = item.children.some((child) => isActive(pathname, child.href));
+          if (shouldExpand) {
+            next[item.id] = true;
+          }
+        }
+      });
+      return next;
+    });
+  }, [navItems, pathname]);
 
   return (
     <div className="flex min-h-screen bg-muted/40">
@@ -46,13 +79,37 @@ export function ProtectedShell({ userName, role, children }: ProtectedShellProps
           </p>
         </div>
         <nav className="flex flex-1 flex-col gap-1">
-          {navItems.map((item) => (
-            <SidebarLink
-              key={item.id}
-              item={item}
-              isActive={isActive(pathname, item.href)}
-            />
-          ))}
+          {navItems.map((item) => {
+            if (item.children && item.children.length > 0) {
+              return (
+                <SidebarGroup
+                  key={item.id}
+                  item={item}
+                  isExpanded={Boolean(expandedGroups[item.id])}
+                  onToggle={() =>
+                    setExpandedGroups((previous) => ({
+                      ...previous,
+                      [item.id]: !previous[item.id],
+                    }))
+                  }
+                  pathname={pathname}
+                />
+              );
+            }
+
+            if (!item.href) {
+              return null;
+            }
+
+            return item.href ? (
+              <SidebarLink
+                key={item.id}
+                item={item}
+                href={item.href}
+                isActive={isActive(pathname, item.href)}
+              />
+            ) : null;
+          })}
         </nav>
         <footer className="mt-8 rounded-lg border border-border/60 bg-muted/40 p-4 text-xs text-muted-foreground">
           <p className="font-medium text-foreground">Precisa de acesso?</p>
@@ -73,11 +130,12 @@ export function ProtectedShell({ userName, role, children }: ProtectedShellProps
 }
 
 interface SidebarLinkProps {
-  item: DashboardModule & { href: string; icon: LucideIcon };
+  item: DashboardNavItem;
+  href: string;
   isActive: boolean;
 }
 
-function SidebarLink({ item, isActive }: SidebarLinkProps) {
+function SidebarLink({ item, href, isActive }: SidebarLinkProps) {
   const Icon = item.icon;
   const isDisabled = item.status === "coming-soon";
 
@@ -100,7 +158,7 @@ function SidebarLink({ item, isActive }: SidebarLinkProps) {
 
   return (
     <Link
-      href={item.href}
+      href={href}
       className={cn(
         "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
         isActive
@@ -119,6 +177,88 @@ function SidebarLink({ item, isActive }: SidebarLinkProps) {
         <Icon className="size-4" aria-hidden />
       </span>
       <span>{item.title}</span>
+    </Link>
+  );
+}
+
+interface SidebarGroupProps {
+  item: DashboardNavItem;
+  isExpanded: boolean;
+  onToggle: () => void;
+  pathname: string;
+}
+
+function SidebarGroup({ item, isExpanded, onToggle, pathname }: SidebarGroupProps) {
+  const Icon = item.icon;
+
+  const hasChildren = item.children && item.children.length > 0;
+  if (!hasChildren) {
+    return null;
+  }
+
+  const displayedChildren = item.children ?? [];
+
+  return (
+    <div className="space-y-1">
+      <button
+        type="button"
+        onClick={onToggle}
+        className={cn(
+          "flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+          isExpanded ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+        )}
+      >
+        <span className="flex items-center gap-3">
+          <span
+            className={cn(
+              "flex size-9 items-center justify-center rounded-md border",
+              isExpanded
+                ? "border-primary/40 bg-primary/10 text-primary"
+                : "border-border/70 bg-muted/40 text-muted-foreground",
+            )}
+          >
+            <Icon className="size-4" aria-hidden />
+          </span>
+          {item.title}
+        </span>
+        <ChevronRight
+          className={cn("size-4 text-muted-foreground transition-transform", isExpanded && "rotate-90")}
+          aria-hidden
+        />
+      </button>
+      {isExpanded ? (
+        <div className="ml-11 flex flex-col gap-1">
+          {displayedChildren.map((child) => (
+            <SidebarChildLink
+              key={child.id}
+              child={child}
+              isActive={isActive(pathname, child.href)}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+interface SidebarChildLinkProps {
+  child: { id: string; title: string; href: string };
+  isActive: boolean;
+}
+
+function SidebarChildLink({ child, isActive }: SidebarChildLinkProps) {
+  return (
+    <Link
+      href={child.href}
+      className={cn(
+        "flex items-center gap-2 rounded-md px-2 py-1 text-sm transition-colors",
+        isActive
+          ? "bg-primary text-primary-foreground shadow-sm"
+          : "text-muted-foreground hover:bg-primary/10 hover:text-foreground",
+      )}
+    >
+      <span className="text-xs uppercase tracking-wide text-muted-foreground/70">•</span>
+      <span>{child.title}</span>
     </Link>
   );
 }
@@ -171,6 +311,7 @@ function buildBreadcrumbItems(segments: string[]) {
     scheduling: "Agenda",
     agenda: "Minha agenda",
     history: "Histórico de reservas",
+    overview: "Painel administrativo",
     software: "Softwares",
     profile: "Meu perfil",
     users: "Usuários",

@@ -12,6 +12,22 @@ export interface DashboardModule {
   status?: "available" | "coming-soon";
 }
 
+export interface DashboardNavItem {
+  id: string;
+  title: string;
+  description: string;
+  href?: string;
+  roles: Role[];
+  icon: LucideIcon;
+  status?: "available" | "coming-soon";
+  children?: Array<{
+    id: string;
+    title: string;
+    href: string;
+    roles: Role[];
+  }>;
+}
+
 export const ALL_ROLES: Role[] = [Role.ADMIN, Role.TECHNICIAN, Role.PROFESSOR];
 
 export const DASHBOARD_MODULES: DashboardModule[] = [
@@ -62,7 +78,7 @@ export const DASHBOARD_MODULES: DashboardModule[] = [
   },
 ];
 
-export const DASHBOARD_NAV_ITEMS = [
+export const DASHBOARD_NAV_ITEMS: DashboardNavItem[] = [
   {
     id: "dashboard-overview",
     title: "Visão geral",
@@ -72,5 +88,39 @@ export const DASHBOARD_NAV_ITEMS = [
     icon: LayoutDashboard,
     status: "available" as const,
   },
-  ...DASHBOARD_MODULES,
+  {
+    id: "laboratory-scheduling-group",
+    title: "Agenda de Laboratórios",
+    description: "Solicite, aprove ou acompanhe reservas de laboratórios em tempo real.",
+    roles: ALL_ROLES,
+    icon: ClipboardList,
+    status: "available" as const,
+    children: [
+      {
+        id: "scheduling-board",
+        title: "Agendar laboratório",
+        href: "/dashboard/scheduling",
+        roles: ALL_ROLES,
+      },
+      {
+        id: "scheduling-agenda",
+        title: "Minha agenda",
+        href: "/dashboard/scheduling/agenda",
+        roles: ALL_ROLES,
+      },
+      {
+        id: "scheduling-history",
+        title: "Histórico de reservas",
+        href: "/dashboard/scheduling/history",
+        roles: ALL_ROLES,
+      },
+      {
+        id: "scheduling-overview",
+        title: "Painel administrativo",
+        href: "/dashboard/scheduling/overview",
+        roles: [Role.ADMIN, Role.TECHNICIAN],
+      },
+    ],
+  },
+  ...DASHBOARD_MODULES.filter((module) => module.id !== "laboratory-scheduling"),
 ];
