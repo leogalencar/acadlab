@@ -1,10 +1,18 @@
 import type { ReservationStatus, Role } from "@prisma/client";
 
 import type { PeriodId } from "@/features/system-rules/constants";
+import type { AcademicPeriodRuleInput } from "@/features/system-rules/types";
 
 export interface SerializableLaboratoryOption {
   id: string;
   name: string;
+  capacity: number;
+  description?: string | null;
+  installedSoftware: Array<{
+    id: string;
+    name: string;
+    version: string;
+  }>;
 }
 
 export interface SerializableReservationSummary {
@@ -18,6 +26,13 @@ export interface SerializableReservationSummary {
     name: string;
   };
   recurrenceId?: string | null;
+  subject?: string | null;
+}
+
+export interface SchedulableUserOption {
+  id: string;
+  name: string;
+  role: Role;
 }
 
 export interface ReservationSlot {
@@ -40,6 +55,11 @@ export interface PeriodSchedule {
 export interface DailySchedule {
   date: string;
   periods: PeriodSchedule[];
+  timeZone: string;
+}
+
+export interface LaboratoryAvailabilitySummary {
+  fullyBookedDates: string[];
 }
 
 export interface AgendaReservation extends SerializableReservationSummary {
@@ -59,7 +79,12 @@ export interface SchedulingBoardData {
   selectedLaboratoryId: string;
   selectedDate: string;
   schedule: DailySchedule;
+  availability: LaboratoryAvailabilitySummary;
   actorRole: Role;
+  actorId: string;
+  actorName: string;
+  users: SchedulableUserOption[];
+  academicPeriods: AcademicPeriodRuleInput[];
 }
 
 export type ReservationActionState = {

@@ -1,4 +1,5 @@
 import { ReservationStatus } from "@prisma/client";
+import { fromZonedTime } from "date-fns-tz";
 
 import { PERIOD_IDS, type PeriodId } from "@/features/system-rules/constants";
 import { parseTimeToMinutes } from "@/features/system-rules/utils";
@@ -44,8 +45,6 @@ export function buildDailySchedule({
   reservations,
   now,
 }: BuildDailyScheduleOptions): DailySchedule {
-  const baseDate = buildStartOfDay(date);
-  const baseTimestamp = baseDate.getTime();
   const normalizedReservations = reservations.map((reservation) => ({
     ...reservation,
     startTimestamp: new Date(reservation.startTime).getTime(),
@@ -80,7 +79,8 @@ export function buildDailySchedule({
     };
 
     const slots = buildPeriodSlots({
-      baseTimestamp,
+      date,
+      timeZone: systemRules.timeZone,
       nowTimestamp,
       reservations: normalizedReservations,
       definition,
@@ -93,11 +93,12 @@ export function buildDailySchedule({
     } satisfies PeriodSchedule;
   });
 
-  return { date, periods };
+  return { date, periods, timeZone: systemRules.timeZone };
 }
 
 interface BuildPeriodSlotsOptions {
-  baseTimestamp: number;
+  date: string;
+  timeZone: string;
   nowTimestamp: number;
   reservations: Array<SerializableReservationSummary & {
     startTimestamp: number;
@@ -107,7 +108,8 @@ interface BuildPeriodSlotsOptions {
 }
 
 function buildPeriodSlots({
-  baseTimestamp,
+  date,
+  timeZone,
   nowTimestamp,
   reservations,
   definition,
@@ -134,7 +136,8 @@ function buildPeriodSlots({
       intervalIndex += 1;
     }
 
-    const slotStart = baseTimestamp + currentMinutes * 60_000;
+    const slotStartDate = toUtcFromTime(date, currentMinutes, timeZone);
+    const slotStart = slotStartDate.getTime();
     const slotEnd = slotStart + definition.classDurationMinutes * 60_000;
 
     const conflictingReservation = findConflictingReservation(
@@ -148,10 +151,10 @@ function buildPeriodSlots({
       conflictingReservation.status !== ReservationStatus.CANCELLED;
 
     slots.push({
-      id: new Date(slotStart).toISOString(),
+      id: slotStartDate.toISOString(),
       periodId: definition.id,
       classIndex: index + 1,
-      startTime: new Date(slotStart).toISOString(),
+      startTime: slotStartDate.toISOString(),
       endTime: new Date(slotEnd).toISOString(),
       isOccupied,
       isPast: slotEnd <= nowTimestamp,
@@ -190,10 +193,18 @@ function findConflictingReservation(
   return null;
 }
 
-function buildStartOfDay(date: string): Date {
+function toUtcFromTime(date: string, minutesFromMidnight: number, timeZone: string): Date {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     throw new Error(`Invalid ISO date: ${date}`);
   }
 
-  return new Date(`${date}T00:00:00.000Z`);
+  const normalizedMinutes = Math.max(0, minutesFromMidnight);
+  const hours = Math.floor(normalizedMinutes / 60);
+  const minutes = normalizedMinutes % 60;
+
+  const hourLabel = String(hours).padStart(2, "0");
+  const minuteLabel = String(minutes).padStart(2, "0");
+  const localDateTime = `${date}T${hourLabel}:${minuteLabel}:00`;
+
+  return fromZonedTime(localDateTime, timeZone);
 }
