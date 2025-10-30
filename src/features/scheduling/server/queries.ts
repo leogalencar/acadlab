@@ -97,25 +97,70 @@ export async function getActiveLaboratoryOptions(): Promise<SerializableLaborato
     select: {
       id: true,
       name: true,
+      capacity: true,
+      description: true,
+      softwareAssociations: {
+        select: {
+          software: {
+            select: {
+              id: true,
+              name: true,
+              version: true,
+            },
+          },
+        },
+        orderBy: {
+          software: {
+            name: "asc",
+          },
+        },
+      },
     },
   });
 
   return laboratories.map((laboratory) => ({
     id: laboratory.id,
     name: laboratory.name,
+    capacity: laboratory.capacity,
+    description: laboratory.description,
+    installedSoftware: laboratory.softwareAssociations.map((association) => ({
+      id: association.software.id,
+      name: association.software.name,
+      version: association.software.version,
+    })),
+  }));
+}
+
+export async function getSchedulableUserOptions(): Promise<SchedulableUserOption[]> {
+  const users = await prisma.user.findMany({
+    where: { status: "ACTIVE" },
+    orderBy: { name: "asc" },
+    select: {
+      id: true,
+      name: true,
+      role: true,
+    },
+  });
+
+  return users.map((user) => ({
+    id: user.id,
+    name: user.name,
+    role: user.role,
   }));
 }
 
 interface GetReservationsForDayOptions {
   laboratoryId: string;
   date: string;
+  timeZone: string;
 }
 
 export async function getReservationsForDay({
   laboratoryId,
   date,
+  timeZone,
 }: GetReservationsForDayOptions): Promise<SerializableReservationSummary[]> {
-  const startOfDay = new Date(`${date}T00:00:00.000Z`);
+  const startOfDay = fromZonedTime(`${date}T00:00:00`, timeZone);
   const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60_000);
 
   const reservations = await prisma.reservation.findMany({
@@ -150,6 +195,7 @@ export async function getReservationsForDay({
     endTime: reservation.endTime.toISOString(),
     status: reservation.status,
     recurrenceId: reservation.recurrenceId,
+    subject: reservation.subject,
     createdBy: {
       id: reservation.createdBy.id,
       name: reservation.createdBy.name,
@@ -178,6 +224,7 @@ export async function getUpcomingReservations(
       endTime: true,
       status: true,
       recurrenceId: true,
+      subject: true,
       createdBy: {
         select: { id: true, name: true },
       },
@@ -208,13 +255,46 @@ export async function getUpcomingReservations(
 
 export async function getReservationHistory(
   actor: { id: string; role: Role },
+  filters: ReservationHistoryFilters = {},
 ): Promise<ReservationHistoryEntry[]> {
   const canViewAll = actor.role === Role.TECHNICIAN || actor.role === Role.ADMIN;
+  const systemRules = await getSystemRules();
+  const timeZone = systemRules.timeZone;
+
+  const where: Prisma.ReservationWhereInput = {
+    ...(canViewAll ? {} : { createdById: actor.id }),
+  };
+
+  if (filters.status && filters.status !== "ALL") {
+    where.status = filters.status;
+  }
+
+  if (filters.laboratoryId) {
+    where.laboratoryId = filters.laboratoryId;
+  }
+
+  if (filters.userId && canViewAll) {
+    where.createdById = filters.userId;
+  }
+
+  if (filters.recurrence === "single") {
+    where.recurrenceId = null;
+  } else if (filters.recurrence === "recurring") {
+    where.recurrenceId = { not: null };
+  }
+
+  if (filters.from) {
+    const fromDate = fromZonedTime(`${filters.from}T00:00:00`, timeZone);
+    where.startTime = { ...(where.startTime as Prisma.DateTimeFilter ?? {}), gte: fromDate };
+  }
+
+  if (filters.to) {
+    const toDate = fromZonedTime(`${filters.to}T23:59:59`, timeZone);
+    where.endTime = { ...(where.endTime as Prisma.DateTimeFilter ?? {}), lte: toDate };
+  }
 
   const reservations = await prisma.reservation.findMany({
-    where: {
-      ...(canViewAll ? {} : { createdById: actor.id }),
-    },
+    where,
     orderBy: { startTime: "desc" },
     take: 250,
     select: {
@@ -226,6 +306,7 @@ export async function getReservationHistory(
       recurrenceId: true,
       cancellationReason: true,
       cancelledAt: true,
+      subject: true,
       createdBy: {
         select: { id: true, name: true },
       },
@@ -244,6 +325,7 @@ export async function getReservationHistory(
     recurrenceId: reservation.recurrenceId,
     cancellationReason: reservation.cancellationReason,
     cancelledAt: reservation.cancelledAt?.toISOString() ?? null,
+    subject: reservation.subject,
     createdBy: {
       id: reservation.createdBy.id,
       name: reservation.createdBy.name,
@@ -253,6 +335,110 @@ export async function getReservationHistory(
       name: reservation.laboratory.name,
     },
   }));
+}
+
+export async function getSchedulingOverview(
+  actor: { id: string; role: Role },
+): Promise<SchedulingOverviewData> {
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60_000);
+  const canViewAll = actor.role === Role.ADMIN || actor.role === Role.TECHNICIAN;
+  const baseWhere: Prisma.ReservationWhereInput = canViewAll ? {} : { createdById: actor.id };
+
+  const [upcoming, pending, cancelled, topLabsRaw, topUsersRaw, upcomingReservations] = await Promise.all([
+    prisma.reservation.count({
+      where: {
+        ...baseWhere,
+        status: { in: [ReservationStatus.CONFIRMED, ReservationStatus.PENDING] },
+        endTime: { gte: now },
+      },
+    }),
+    prisma.reservation.count({
+      where: {
+        ...baseWhere,
+        status: ReservationStatus.PENDING,
+        endTime: { gte: now },
+      },
+    }),
+    prisma.reservation.count({
+      where: {
+        ...baseWhere,
+        status: ReservationStatus.CANCELLED,
+        cancelledAt: { gte: thirtyDaysAgo },
+      },
+    }),
+    prisma.reservation.groupBy({
+      by: ["laboratoryId"],
+      _count: { laboratoryId: true },
+      where: {
+        ...baseWhere,
+        status: { not: ReservationStatus.CANCELLED },
+        startTime: { gte: thirtyDaysAgo },
+      },
+      orderBy: { _count: { laboratoryId: "desc" } },
+      take: 5,
+    }),
+    canViewAll
+      ? prisma.reservation.groupBy({
+          by: ["createdById"],
+          _count: { createdById: true },
+          where: {
+            status: { not: ReservationStatus.CANCELLED },
+            startTime: { gte: thirtyDaysAgo },
+          },
+          orderBy: { _count: { createdById: "desc" } },
+          take: 5,
+        })
+      : Promise.resolve([]),
+    getUpcomingReservations(actor),
+  ]);
+
+  const labIds = topLabsRaw.map((entry) => entry.laboratoryId);
+  const labs = labIds.length
+    ? await prisma.laboratory.findMany({
+        where: { id: { in: labIds } },
+        select: { id: true, name: true },
+      })
+    : [];
+  const labNameMap = new Map(labs.map((lab) => [lab.id, lab.name]));
+
+  const topLaboratories = topLabsRaw.map((entry) => ({
+    laboratory: {
+      id: entry.laboratoryId,
+      name: labNameMap.get(entry.laboratoryId) ?? "Laboratório",
+    },
+    reservations: entry._count.laboratoryId,
+  }));
+
+  let topUsers: SchedulingOverviewData["topUsers"] = [];
+
+  if (canViewAll && topUsersRaw.length > 0) {
+    const userIds = topUsersRaw.map((entry) => entry.createdById);
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, name: true },
+    });
+    const userMap = new Map(users.map((user) => [user.id, user.name]));
+
+    topUsers = topUsersRaw.map((entry) => ({
+      user: {
+        id: entry.createdById,
+        name: userMap.get(entry.createdById) ?? "Usuário",
+      },
+      reservations: entry._count.createdById,
+    }));
+  }
+
+  return {
+    totals: {
+      upcoming,
+      pending,
+      cancelledLast30: cancelled,
+    },
+    topLaboratories,
+    topUsers,
+    upcomingReservations,
+  };
 }
 
 export function normalizeDateParam(rawDate?: string | string[]): string {
