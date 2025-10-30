@@ -8,14 +8,31 @@ import { cn } from "@/lib/utils";
 
 interface DatePickerCalendarProps {
   selectedDate: string;
+  fullyBookedDates: string[];
+  timeZone: string;
   onSelect: (date: string) => void;
+  highlightedDates?: string[];
 }
 
 const WEEKDAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
-export function DatePickerCalendar({ selectedDate, onSelect }: DatePickerCalendarProps) {
-  const initialMonth = useMemo(() => startOfMonth(parseIsoDate(selectedDate)), [selectedDate]);
-  const [visibleMonth, setVisibleMonth] = useState(initialMonth);
+export function DatePickerCalendar({
+  selectedDate,
+  fullyBookedDates,
+  timeZone,
+  onSelect,
+  highlightedDates = [],
+}: DatePickerCalendarProps) {
+  const initialMonth = useMemo(() => getMonthPointerFromIso(selectedDate), [selectedDate]);
+  const [visibleMonth, setVisibleMonth] = useState<MonthPointer>(initialMonth);
+  const fullyBookedSet = useMemo(
+    () => new Set(fullyBookedDates.map((date) => normalizeDate(date))),
+    [fullyBookedDates],
+  );
+  const highlightedSet = useMemo(
+    () => new Set(highlightedDates.map((date) => normalizeDate(date))),
+    [highlightedDates],
+  );
 
   useEffect(() => {
     setVisibleMonth(initialMonth);
@@ -23,19 +40,23 @@ export function DatePickerCalendar({ selectedDate, onSelect }: DatePickerCalenda
 
   const calendarDays = useMemo(() => buildCalendarDays(visibleMonth), [visibleMonth]);
   const selectedIso = normalizeDate(selectedDate);
-  const todayIso = normalizeDate(new Date().toISOString().slice(0, 10));
+  const todayIso = useMemo(() => formatDateInTimeZone(new Date(), timeZone), [timeZone]);
 
-  const monthLabel = new Intl.DateTimeFormat("pt-BR", {
-    month: "long",
-    year: "numeric",
-  }).format(visibleMonth);
+  const monthLabel = useMemo(() => {
+    const referenceDate = new Date(Date.UTC(visibleMonth.year, visibleMonth.month - 1, 1));
+    return new Intl.DateTimeFormat("pt-BR", {
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    }).format(referenceDate);
+  }, [visibleMonth]);
 
   const handlePrevious = () => {
-    setVisibleMonth((current) => addMonths(current, -1));
+    setVisibleMonth((current) => shiftMonthPointer(current, -1));
   };
 
   const handleNext = () => {
-    setVisibleMonth((current) => addMonths(current, 1));
+    setVisibleMonth((current) => shiftMonthPointer(current, 1));
   };
 
   return (
@@ -74,15 +95,32 @@ export function DatePickerCalendar({ selectedDate, onSelect }: DatePickerCalenda
       </div>
       <div className="grid grid-cols-7 gap-1 px-3 pb-3">
         {calendarDays.map((day) => {
-          const isoDate = normalizeDate(day.date.toISOString().slice(0, 10));
+          const isoDate = normalizeDate(day.isoDate);
           const isSelected = isoDate === selectedIso;
           const isToday = isoDate === todayIso;
+          const isPast = isoDate < todayIso;
+          const isFullyBooked = fullyBookedSet.has(isoDate);
+          const isHighlighted = highlightedSet.has(isoDate);
+          const isDisabled = isPast || isFullyBooked;
 
           return (
             <button
-              key={isoDate + (day.currentMonth ? "current" : "other")}
+              key={isoDate}
               type="button"
-              onClick={() => onSelect(isoDate)}
+              onClick={() => {
+                if (!isDisabled) {
+                  onSelect(isoDate);
+                }
+              }}
+              disabled={isDisabled}
+              aria-disabled={isDisabled}
+              title={
+                isFullyBooked
+                  ? "Todos os horários estão reservados para esta data."
+                  : isPast
+                    ? "Datas passadas não estão disponíveis."
+                    : undefined
+              }
               className={cn(
                 "flex h-9 w-full items-center justify-center rounded-md text-sm transition-colors",
                 day.currentMonth
@@ -91,9 +129,14 @@ export function DatePickerCalendar({ selectedDate, onSelect }: DatePickerCalenda
                 isSelected && "bg-primary text-primary-foreground hover:bg-primary",
                 !day.currentMonth && isSelected && "opacity-90",
                 isToday && !isSelected && "border border-primary/40",
+                isDisabled &&
+                  (isFullyBooked
+                    ? "cursor-not-allowed bg-destructive/10 text-destructive hover:bg-destructive/10"
+                    : "cursor-not-allowed bg-muted/60 text-muted-foreground/70 hover:bg-muted/60 hover:text-muted-foreground/70"),
+                !isDisabled && isHighlighted && !isSelected && "border border-primary/40 bg-primary/10 text-primary",
               )}
             >
-              <span>{day.date.getUTCDate()}</span>
+              <span>{day.dayNumber}</span>
             </button>
           );
         })}
@@ -102,56 +145,121 @@ export function DatePickerCalendar({ selectedDate, onSelect }: DatePickerCalenda
   );
 }
 
+interface MonthPointer {
+  year: number;
+  month: number; // 1-12
+}
+
 interface CalendarDay {
-  date: Date;
+  isoDate: string;
+  dayNumber: number;
   currentMonth: boolean;
 }
 
-function buildCalendarDays(monthDate: Date): CalendarDay[] {
-  const year = monthDate.getUTCFullYear();
-  const month = monthDate.getUTCMonth();
-  const firstDayOfMonth = new Date(Date.UTC(year, month, 1));
-  const firstWeekday = firstDayOfMonth.getUTCDay();
-  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+function getMonthPointerFromIso(isoDate: string): MonthPointer {
+  const match = isoDate.match(/^(\d{4})-(\d{2})/);
+  if (!match) {
+    const today = new Date();
+    return {
+      year: today.getUTCFullYear(),
+      month: today.getUTCMonth() + 1,
+    };
+  }
+
+  const year = Number.parseInt(match[1]!, 10);
+  const month = Number.parseInt(match[2]!, 10);
+
+  if (!Number.isFinite(year) || !Number.isFinite(month)) {
+    const today = new Date();
+    return {
+      year: today.getUTCFullYear(),
+      month: today.getUTCMonth() + 1,
+    };
+  }
+
+  return { year, month: Math.min(Math.max(month, 1), 12) };
+}
+
+function buildCalendarDays(monthPointer: MonthPointer): CalendarDay[] {
+  const { year, month } = monthPointer;
+  const firstWeekday = getWeekday(year, month, 1);
+  const daysInMonth = getDaysInMonth(year, month);
+  const previousMonth = shiftMonthPointer(monthPointer, -1);
+  const previousMonthDays = getDaysInMonth(previousMonth.year, previousMonth.month);
 
   const days: CalendarDay[] = [];
 
-  const previousMonthDays = firstWeekday;
-  for (let index = previousMonthDays; index > 0; index -= 1) {
-    const date = new Date(Date.UTC(year, month, 1 - index));
-    days.push({ date, currentMonth: false });
+  for (let index = firstWeekday; index > 0; index -= 1) {
+    const dayNumber = previousMonthDays - index + 1;
+    days.push({
+      isoDate: formatIsoDate(previousMonth.year, previousMonth.month, dayNumber),
+      dayNumber,
+      currentMonth: false,
+    });
   }
 
   for (let day = 1; day <= daysInMonth; day += 1) {
-    const date = new Date(Date.UTC(year, month, day));
-    days.push({ date, currentMonth: true });
+    days.push({
+      isoDate: formatIsoDate(year, month, day),
+      dayNumber: day,
+      currentMonth: true,
+    });
   }
 
   const totalCells = Math.ceil(days.length / 7) * 7;
   const remaining = totalCells - days.length;
+
+  const nextMonth = shiftMonthPointer(monthPointer, 1);
   for (let index = 1; index <= remaining; index += 1) {
-    const date = new Date(Date.UTC(year, month + 1, index));
-    days.push({ date, currentMonth: false });
+    days.push({
+      isoDate: formatIsoDate(nextMonth.year, nextMonth.month, index),
+      dayNumber: index,
+      currentMonth: false,
+    });
   }
 
   return days;
 }
 
-function parseIsoDate(value: string): Date {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return new Date(`${value}T00:00:00.000Z`);
+function shiftMonthPointer(month: MonthPointer, offset: number): MonthPointer {
+  let year = month.year;
+  let newMonth = month.month + offset;
+
+  while (newMonth > 12) {
+    newMonth -= 12;
+    year += 1;
   }
 
-  return new Date();
+  while (newMonth < 1) {
+    newMonth += 12;
+    year -= 1;
+  }
+
+  return { year, month: newMonth };
 }
 
-function startOfMonth(date: Date): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+function getWeekday(year: number, month: number, day: number) {
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCDay();
 }
 
-function addMonths(date: Date, months: number): Date {
-  const result = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1));
-  return result;
+function getDaysInMonth(year: number, month: number) {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function formatIsoDate(year: number, month: number, day: number) {
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function formatDateInTimeZone(date: Date, timeZone: string): string {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+
+  return formatter.format(date);
 }
 
 function normalizeDate(value: string): string {

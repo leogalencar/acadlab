@@ -6,6 +6,7 @@ import { SchedulingBoard } from "@/features/scheduling/components/scheduling-boa
 import {
   getActiveLaboratoryOptions,
   getSchedulingBoardData,
+  getSchedulableUserOptions,
   normalizeDateParam,
 } from "@/features/scheduling/server/queries";
 import type { SearchParamsLike } from "@/features/shared/search-params";
@@ -55,11 +56,14 @@ export default async function SchedulingPage({
   const selectedDate = normalizeDateParam(resolvedParams?.date);
   const now = new Date();
 
-  const schedule = await getSchedulingBoardData({
+  const { schedule, availability, academicPeriods } = await getSchedulingBoardData({
     laboratoryId: selectedLaboratoryId,
     date: selectedDate,
     now,
   });
+
+  const canAssignUsers = session.user.role === "ADMIN" || session.user.role === "TECHNICIAN";
+  const users = canAssignUsers ? await getSchedulableUserOptions() : [];
 
   return (
     <SchedulingBoard
@@ -67,7 +71,12 @@ export default async function SchedulingPage({
       selectedLaboratoryId={selectedLaboratoryId}
       selectedDate={selectedDate}
       schedule={schedule}
+      availability={availability}
       actorRole={session.user.role}
+      actorId={session.user.id}
+      actorName={session.user.name ?? "Usuário"}
+      users={users}
+      academicPeriods={academicPeriods}
     />
   );
 }
