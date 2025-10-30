@@ -2,12 +2,22 @@ import { Role } from "@prisma/client";
 import { CalendarDays } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { ReservationHistoryEntry } from "@/features/scheduling/types";
+import { HistoryFilters } from "@/features/scheduling/components/history-filters";
+import type {
+  ReservationHistoryEntry,
+  SerializableLaboratoryOption,
+  SchedulableUserOption,
+} from "@/features/scheduling/types";
+import type { ReservationHistoryFilters } from "@/features/scheduling/server/queries";
 import { cn } from "@/lib/utils";
 
 interface HistoryTableProps {
   reservations: ReservationHistoryEntry[];
   actorRole: Role;
+  filters: ReservationHistoryFilters;
+  laboratories: SerializableLaboratoryOption[];
+  users: SchedulableUserOption[];
+  canViewAllUsers: boolean;
 }
 
 const statusLabels = {
@@ -22,8 +32,15 @@ const statusStyles: Record<keyof typeof statusLabels, string> = {
   CANCELLED: "bg-destructive/10 text-destructive",
 };
 
-export function HistoryTable({ reservations, actorRole }: HistoryTableProps) {
-  const canSeeAllUsers = actorRole === Role.ADMIN || actorRole === Role.TECHNICIAN;
+export function HistoryTable({
+  reservations,
+  actorRole,
+  filters,
+  laboratories,
+  users,
+  canViewAllUsers,
+}: HistoryTableProps) {
+  const canSeeAllUsers = canViewAllUsers || actorRole === Role.ADMIN || actorRole === Role.TECHNICIAN;
   const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
     day: "2-digit",
     month: "2-digit",
@@ -36,10 +53,16 @@ export function HistoryTable({ reservations, actorRole }: HistoryTableProps) {
 
   return (
     <div className="space-y-8">
+      <HistoryFilters
+        laboratories={laboratories}
+        users={users}
+        initialFilters={filters}
+        canViewAllUsers={canViewAllUsers}
+      />
       <header className="space-y-2">
         <p className="text-sm font-medium text-primary/80">Histórico completo</p>
         <div className="space-y-1">
-          <h1 className="text-3xl font-semibold tracking-tight">Reservas registradas</h1>
+          <h2 className="text-2xl font-semibold tracking-tight text-foreground">Reservas registradas</h2>
           <p className="text-sm text-muted-foreground">
             Visualize todas as reservas realizadas. Técnicos e administradores conseguem revisar as reservas de qualquer usuário.
           </p>
@@ -66,11 +89,13 @@ export function HistoryTable({ reservations, actorRole }: HistoryTableProps) {
                   <th scope="col" className="px-4 py-3 font-medium text-muted-foreground">Data</th>
                   <th scope="col" className="px-4 py-3 font-medium text-muted-foreground">Horário</th>
                   <th scope="col" className="px-4 py-3 font-medium text-muted-foreground">Laboratório</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-muted-foreground">Disciplina</th>
                   {canSeeAllUsers ? (
                     <th scope="col" className="px-4 py-3 font-medium text-muted-foreground">Responsável</th>
                   ) : null}
                   <th scope="col" className="px-4 py-3 font-medium text-muted-foreground">Status</th>
                   <th scope="col" className="px-4 py-3 font-medium text-muted-foreground">Recorrência</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-muted-foreground">Cancelamento</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
@@ -87,6 +112,9 @@ export function HistoryTable({ reservations, actorRole }: HistoryTableProps) {
                       <td className="px-4 py-3 text-foreground">{dateLabel}</td>
                       <td className="px-4 py-3 text-foreground">{timeLabel}</td>
                       <td className="px-4 py-3 text-foreground">{reservation.laboratory.name}</td>
+                      <td className="px-4 py-3 text-foreground">
+                        {reservation.subject ? reservation.subject : "—"}
+                      </td>
                       {canSeeAllUsers ? (
                         <td className="px-4 py-3 text-foreground">{reservation.createdBy.name}</td>
                       ) : null}
@@ -103,6 +131,13 @@ export function HistoryTable({ reservations, actorRole }: HistoryTableProps) {
                       <td className="px-4 py-3 text-muted-foreground">
                         {reservation.recurrenceId ? "Recorrente" : "Única"}
                       </td>
+                      <td className="px-4 py-3 text-sm text-muted-foreground">
+                        {reservation.status === "CANCELLED"
+                          ? reservation.cancelledAt
+                            ? `${formatDateLabel(reservation.cancelledAt)}${reservation.cancellationReason ? ` • ${reservation.cancellationReason}` : ""}`
+                            : reservation.cancellationReason ?? "Cancelada"
+                          : "—"}
+                      </td>
                     </tr>
                   );
                 })}
@@ -113,4 +148,16 @@ export function HistoryTable({ reservations, actorRole }: HistoryTableProps) {
       )}
     </div>
   );
+}
+
+function formatDateLabel(isoString: string): string {
+  try {
+    const formatter = new Intl.DateTimeFormat("pt-BR", {
+      dateStyle: "short",
+      timeStyle: "short",
+    });
+    return formatter.format(new Date(isoString));
+  } catch {
+    return isoString;
+  }
 }
