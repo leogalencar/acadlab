@@ -117,6 +117,7 @@ model Reservation {
   status             ReservationStatus @default(PENDING)
   cancellationReason String?           @db.Text
   cancelledAt        DateTime?
+  subject            String?
   recurrenceId       String?
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
