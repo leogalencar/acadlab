@@ -1,9 +1,25 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useActionState,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ReactNode,
+} from "react";
+import Image from "next/image";
 import { useFormStatus } from "react-dom";
-import { Plus, Trash2 } from "lucide-react";
+import {
+  CalendarX2,
+  Image as ImageIcon,
+  Plus,
+  RefreshCw,
+  Trash2,
+  Undo2,
+  UploadCloud,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -19,15 +35,17 @@ import {
   DEFAULT_ALLOWED_EMAIL_DOMAINS,
   DEFAULT_COLOR_RULES,
   DEFAULT_PERIOD_RULES_MINUTES,
+  DEFAULT_SYSTEM_RULES,
   PERIOD_IDS,
+  SUPPORTED_TIME_ZONES,
   type PeriodId,
 } from "@/features/system-rules/constants";
 import { updateSystemRulesAction } from "@/features/system-rules/server/actions";
-import type { SerializableSystemRules } from "@/features/system-rules/types";
-import {
-  buildPaletteCssVariables,
-  formatMinutesToTime,
-} from "@/features/system-rules/utils";
+import type {
+  NonTeachingDayRuleMinutes,
+  SerializableSystemRules,
+} from "@/features/system-rules/types";
+import { buildPaletteCssVariables, formatMinutesToTime } from "@/features/system-rules/utils";
 
 const FORM_INITIAL_STATE = { status: "idle" as const };
 
@@ -49,6 +67,16 @@ const PERIOD_METADATA: Record<PeriodId, { title: string; description: string }> 
   },
 };
 
+const WEEKDAY_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "0", label: "Domingo" },
+  { value: "1", label: "Segunda-feira" },
+  { value: "2", label: "Terça-feira" },
+  { value: "3", label: "Quarta-feira" },
+  { value: "4", label: "Quinta-feira" },
+  { value: "5", label: "Sexta-feira" },
+  { value: "6", label: "Sábado" },
+];
+
 interface SystemRulesFormProps {
   rules: SerializableSystemRules;
 }
@@ -57,6 +85,10 @@ interface ColorState {
   primary: string;
   secondary: string;
   accent: string;
+  success: string;
+  warning: string;
+  info: string;
+  danger: string;
 }
 
 interface IntervalFormState {
@@ -84,6 +116,20 @@ interface EmailDomainFormState {
   value: string;
 }
 
+interface NonTeachingDayFormState {
+  id: string;
+  kind: "specific-date" | "weekday";
+  date: string;
+  weekDay: string;
+  description: string;
+  repeatsAnnually: boolean;
+}
+
+interface BrandingState {
+  institutionName: string;
+  logoUrl: string | null;
+}
+
 export function SystemRulesForm({ rules }: SystemRulesFormProps) {
   const [state, formAction] = useActionState(updateSystemRulesAction, FORM_INITIAL_STATE);
 
@@ -97,14 +143,35 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
   const [emailDomains, setEmailDomains] = useState<EmailDomainFormState[]>(() =>
     createEmailDomainState(rules),
   );
+  const [timeZone, setTimeZone] = useState<string>(() => rules.timeZone);
+  const [nonTeachingDays, setNonTeachingDays] = useState<NonTeachingDayFormState[]>(() =>
+    createNonTeachingDaysState(rules),
+  );
+  const [branding, setBranding] = useState<BrandingState>(() => createBrandingState(rules));
+  const [logoPreview, setLogoPreview] = useState<string | null>(rules.branding.logoUrl ?? null);
+  const [logoAction, setLogoAction] = useState<"keep" | "remove" | "replace">("keep");
 
   const paletteBaseRef = useRef<Record<string, string> | null>(null);
+  const logoObjectUrlRef = useRef<string | null>(null);
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setColors(createColorState(rules));
     setIntervalsByPeriod(createIntervalsState(rules));
     setPeriodFields(createPeriodFieldsState(rules));
     setEmailDomains(createEmailDomainState(rules));
+    setTimeZone(rules.timeZone);
+    setNonTeachingDays(createNonTeachingDaysState(rules));
+    setBranding(createBrandingState(rules));
+    setLogoPreview(rules.branding.logoUrl ?? null);
+    setLogoAction("keep");
+    if (logoInputRef.current) {
+      logoInputRef.current.value = "";
+    }
+    if (logoObjectUrlRef.current) {
+      URL.revokeObjectURL(logoObjectUrlRef.current);
+      logoObjectUrlRef.current = null;
+    }
   }, [rules]);
 
   useEffect(() => {
@@ -116,6 +183,10 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
       primaryColor: rules.primaryColor,
       secondaryColor: rules.secondaryColor,
       accentColor: rules.accentColor,
+      successColor: rules.successColor,
+      warningColor: rules.warningColor,
+      infoColor: rules.infoColor,
+      dangerColor: rules.dangerColor,
     });
   }, [rules]);
 
@@ -134,6 +205,10 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
       primaryColor: colors.primary,
       secondaryColor: colors.secondary,
       accentColor: colors.accent,
+      successColor: colors.success,
+      warningColor: colors.warning,
+      infoColor: colors.info,
+      dangerColor: colors.danger,
     });
 
     Object.entries(palette).forEach(([property, value]) => {
@@ -156,6 +231,11 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
       Object.entries(paletteBaseRef.current).forEach(([property, value]) => {
         style.setProperty(property, value);
       });
+
+      if (logoObjectUrlRef.current) {
+        URL.revokeObjectURL(logoObjectUrlRef.current);
+        logoObjectUrlRef.current = null;
+      }
     };
   }, []);
 
@@ -168,6 +248,10 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
       primaryColor: colors.primary,
       secondaryColor: colors.secondary,
       accentColor: colors.accent,
+      successColor: colors.success,
+      warningColor: colors.warning,
+      infoColor: colors.info,
+      dangerColor: colors.danger,
     });
   }, [state.status, colors]);
 
@@ -324,52 +408,267 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
     }));
   };
 
+  const handleAddNonTeachingDay = (kind: "specific-date" | "weekday", presetWeekDay?: string) => {
+    setNonTeachingDays((previous) => [
+      ...previous,
+      createEmptyNonTeachingDay(kind, presetWeekDay),
+    ]);
+  };
+
+  const handleAutoAddSunday = () => {
+    setNonTeachingDays((previous) => {
+      if (previous.some((entry) => entry.kind === "weekday" && entry.weekDay === "0")) {
+        return previous;
+      }
+      return [...previous, createEmptyNonTeachingDay("weekday", "0")];
+    });
+  };
+
+  const handleNonTeachingDayChange = (
+    id: string,
+    field: keyof NonTeachingDayFormState,
+    value: string | boolean,
+  ) => {
+    setNonTeachingDays((previous) =>
+      previous.map((entry) => {
+        if (entry.id !== id) {
+          return entry;
+        }
+
+        if (field === "kind") {
+          const nextKind = value as NonTeachingDayFormState["kind"];
+          return {
+            ...entry,
+            kind: nextKind,
+            date: nextKind === "specific-date" ? entry.date : "",
+            weekDay: nextKind === "weekday" ? (entry.weekDay || "0") : "",
+            repeatsAnnually: nextKind === "specific-date" ? entry.repeatsAnnually : false,
+          };
+        }
+
+        if (field === "repeatsAnnually") {
+          return { ...entry, repeatsAnnually: Boolean(value) };
+        }
+
+        return {
+          ...entry,
+          [field]: typeof value === "string" ? value : entry[field],
+        } as NonTeachingDayFormState;
+      }),
+    );
+  };
+
+  const handleRemoveNonTeachingDay = (id: string) => {
+    setNonTeachingDays((previous) => previous.filter((entry) => entry.id !== id));
+  };
+
+  const handleRestoreNonTeachingDays = () => {
+    setNonTeachingDays(createDefaultNonTeachingDaysState());
+  };
+
+  const handleInstitutionNameChange = (value: string) => {
+    setBranding((previous) => ({ ...previous, institutionName: value }));
+  };
+
+  const handleLogoSelect = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    if (logoObjectUrlRef.current) {
+      URL.revokeObjectURL(logoObjectUrlRef.current);
+      logoObjectUrlRef.current = null;
+    }
+
+    const url = URL.createObjectURL(file);
+    logoObjectUrlRef.current = url;
+    setLogoPreview(url);
+    setLogoAction("replace");
+  };
+
+  const handleRemoveLogo = () => {
+    if (logoObjectUrlRef.current) {
+      URL.revokeObjectURL(logoObjectUrlRef.current);
+      logoObjectUrlRef.current = null;
+    }
+
+    if (logoInputRef.current) {
+      logoInputRef.current.value = "";
+    }
+
+    setLogoPreview(null);
+    setLogoAction(branding.logoUrl ? "remove" : "keep");
+  };
+
+  const handleRestoreLogo = () => {
+    if (logoObjectUrlRef.current) {
+      URL.revokeObjectURL(logoObjectUrlRef.current);
+      logoObjectUrlRef.current = null;
+    }
+
+    if (logoInputRef.current) {
+      logoInputRef.current.value = "";
+    }
+
+    setLogoPreview(branding.logoUrl);
+    setLogoAction("keep");
+  };
+
   const handleRestoreAll = () => {
     setColors(createDefaultColorState());
     setPeriodFields(createDefaultPeriodFieldsState());
     setIntervalsByPeriod(createDefaultIntervalsState());
     setEmailDomains(createDefaultEmailDomainState());
+    setTimeZone(DEFAULT_SYSTEM_RULES.schedule.timeZone);
+    const defaultNonTeaching = createDefaultNonTeachingDaysState();
+    setNonTeachingDays(defaultNonTeaching);
+    const defaultBranding = createDefaultBrandingState();
+    setBranding(defaultBranding);
+    setLogoPreview(defaultBranding.logoUrl);
+    setLogoAction("keep");
+    if (logoInputRef.current) {
+      logoInputRef.current.value = "";
+    }
   };
 
   return (
     <form className="space-y-8" action={formAction}>
       <Card>
-        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-1">
             <CardTitle className="text-xl">Identidade visual do sistema</CardTitle>
             <CardDescription>
-              Defina as cores que serão utilizadas em botões, links e destaques da interface.
+              Personalize o nome da instituição e o logotipo exibido na navegação interna.
             </CardDescription>
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={handleRestoreColors}>
-            Restaurar padrão de cores
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={handleRestoreLogo}>
+              <Undo2 className="mr-2 size-4" />
+              Restaurar logotipo
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={handleRestoreColors}>
+              <RefreshCw className="mr-2 size-4" />
+              Restaurar paleta
+            </Button>
+          </div>
         </CardHeader>
-        <CardContent className="grid gap-6 md:grid-cols-3">
-          <ColorField
-            id="primaryColor"
-            name="primaryColor"
-            label="Cor primária"
-            description="Aplicada em botões principais e elementos de maior destaque."
-            value={colors.primary}
-            onValueChange={handleColorChange("primary")}
-          />
-          <ColorField
-            id="secondaryColor"
-            name="secondaryColor"
-            label="Cor secundária"
-            description="Utilizada em barras, cabeçalhos e elementos complementares."
-            value={colors.secondary}
-            onValueChange={handleColorChange("secondary")}
-          />
-          <ColorField
-            id="accentColor"
-            name="accentColor"
-            label="Cor de destaque"
-            description="Aparece em links, indicadores e mensagens informativas."
-            value={colors.accent}
-            onValueChange={handleColorChange("accent")}
-          />
+        <CardContent className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="institutionName">Nome da instituição</Label>
+              <Input
+                id="institutionName"
+                name="institutionName"
+                value={branding.institutionName}
+                onChange={(event) => handleInstitutionNameChange(event.currentTarget.value)}
+                placeholder="ex.: Fatec Dom Amaury Castanho"
+              />
+              <HelperText>
+                Esse nome aparece no cabeçalho e em documentos exportados.
+              </HelperText>
+            </div>
+            <div className="space-y-2">
+              <Label>Logotipo</Label>
+              <div className="flex items-start gap-4">
+                <div className="flex h-24 w-24 items-center justify-center rounded-md border border-dashed border-border/60 bg-muted/50">
+                  {logoPreview ? (
+                    <Image
+                      src={logoPreview}
+                      alt="Pré-visualização do logotipo"
+                      width={96}
+                      height={96}
+                      className="max-h-20 max-w-20 object-contain"
+                    />
+                  ) : (
+                    <ImageIcon className="size-8 text-muted-foreground" aria-hidden />
+                  )}
+                </div>
+                <div className="flex-1 space-y-2 text-sm text-muted-foreground">
+                  <Input
+                    ref={logoInputRef}
+                    id="logoFile"
+                    name="logoFile"
+                    type="file"
+                    accept="image/png,image/jpeg,image/svg+xml"
+                    onChange={handleLogoSelect}
+                  />
+                  <p>Formatos recomendados: PNG, JPG ou SVG até 256 KB.</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="secondary" size="sm" onClick={handleRemoveLogo}>
+                      <Trash2 className="mr-2 size-4" />
+                      Remover logotipo
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={handleRestoreLogo}>
+                      <UploadCloud className="mr-2 size-4" />
+                      Reverter alteração
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="grid gap-4">
+            <ColorField
+              id="primaryColor"
+              name="primaryColor"
+              label="Cor primária"
+              description="Aplicada em botões principais e elementos de maior destaque."
+              value={colors.primary}
+              onValueChange={handleColorChange("primary")}
+            />
+            <ColorField
+              id="secondaryColor"
+              name="secondaryColor"
+              label="Cor secundária"
+              description="Utilizada em barras laterais, cabeçalhos e planos de fundo."
+              value={colors.secondary}
+              onValueChange={handleColorChange("secondary")}
+            />
+            <ColorField
+              id="accentColor"
+              name="accentColor"
+              label="Cor de destaque"
+              description="Aparece em links, indicadores e mensagens informativas."
+              value={colors.accent}
+              onValueChange={handleColorChange("accent")}
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <ColorField
+                id="successColor"
+                name="successColor"
+                label="Cor de sucesso"
+                description="Indicadores positivos e confirmações."
+                value={colors.success}
+                onValueChange={handleColorChange("success")}
+              />
+              <ColorField
+                id="warningColor"
+                name="warningColor"
+                label="Cor de aviso"
+                description="Alertas e mensagens de atenção."
+                value={colors.warning}
+                onValueChange={handleColorChange("warning")}
+              />
+              <ColorField
+                id="infoColor"
+                name="infoColor"
+                label="Cor informativa"
+                description="Realça itens neutros ou informativos."
+                value={colors.info}
+                onValueChange={handleColorChange("info")}
+              />
+              <ColorField
+                id="dangerColor"
+                name="dangerColor"
+                label="Cor crítica"
+                description="Utilizada em mensagens de erro e itens bloqueados."
+                value={colors.danger}
+                onValueChange={handleColorChange("danger")}
+              />
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -430,6 +729,185 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
             <Plus className="mr-2 size-4" />
             Adicionar domínio
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-1">
+            <CardTitle className="text-xl">Configurações gerais do calendário</CardTitle>
+            <CardDescription>
+              Defina o fuso horário padrão e cadastre dias não letivos para evitar agendamentos.
+            </CardDescription>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={handleRestoreNonTeachingDays}>
+            Restaurar dias padrão
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-2">
+            <Label htmlFor="timeZone">Fuso horário</Label>
+            <select
+              id="timeZone"
+              name="timeZone"
+              value={timeZone}
+              onChange={(event) => setTimeZone(event.currentTarget.value)}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              {SUPPORTED_TIME_ZONES.map((zone) => (
+                <option key={zone} value={zone}>
+                  {zone}
+                </option>
+              ))}
+            </select>
+            <HelperText>
+              Os horários exibidos no sistema seguirão este fuso horário.
+            </HelperText>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-medium text-foreground">Dias não letivos</p>
+                <p className="text-xs text-muted-foreground">
+                  Cadastre datas específicas ou dias da semana em que não devem ocorrer reservas.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => handleAddNonTeachingDay("specific-date")}>
+                  <CalendarX2 className="mr-2 size-4" />
+                  Adicionar data
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => handleAddNonTeachingDay("weekday") }>
+                  <Plus className="mr-2 size-4" />
+                  Adicionar dia da semana
+                </Button>
+                <Button type="button" variant="secondary" size="sm" onClick={handleAutoAddSunday}>
+                  Marcar domingos automaticamente
+                </Button>
+              </div>
+            </div>
+
+            {nonTeachingDays.length === 0 ? (
+              <div className="rounded-md border border-dashed border-border/70 p-4 text-sm text-muted-foreground">
+                Nenhum dia não letivo cadastrado. Utilize os botões acima para adicionar datas ou recorrências.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {nonTeachingDays.map((entry, index) => (
+                  <div
+                    key={entry.id}
+                    className="space-y-3 rounded-lg border border-border/60 p-4"
+                  >
+                    <input type="hidden" name={`nonTeachingDays.${index}.id`} value={entry.id} />
+                    <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+                      <div className="space-y-1">
+                        <Label htmlFor={`nonTeachingDays.${index}.kind`}>Tipo</Label>
+                        <select
+                          id={`nonTeachingDays.${index}.kind`}
+                          name={`nonTeachingDays.${index}.kind`}
+                          value={entry.kind}
+                          onChange={(event) =>
+                            handleNonTeachingDayChange(entry.id, "kind", event.currentTarget.value)
+                          }
+                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                        >
+                          <option value="specific-date">Data específica</option>
+                          <option value="weekday">Dia da semana</option>
+                        </select>
+                      </div>
+                      {entry.kind === "specific-date" ? (
+                        <div className="space-y-1">
+                          <Label htmlFor={`nonTeachingDays.${index}.date`}>Data</Label>
+                          <Input
+                            id={`nonTeachingDays.${index}.date`}
+                            name={`nonTeachingDays.${index}.date`}
+                            type="date"
+                            required
+                            value={entry.date}
+                            onChange={(event) =>
+                              handleNonTeachingDayChange(entry.id, "date", event.currentTarget.value)
+                            }
+                          />
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <Label htmlFor={`nonTeachingDays.${index}.weekDay`}>Dia da semana</Label>
+                          <select
+                            id={`nonTeachingDays.${index}.weekDay`}
+                            name={`nonTeachingDays.${index}.weekDay`}
+                            value={entry.weekDay}
+                            onChange={(event) =>
+                              handleNonTeachingDayChange(entry.id, "weekDay", event.currentTarget.value)
+                            }
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                          >
+                            {WEEKDAY_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      <div className="flex items-end justify-end">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="text-muted-foreground hover:text-destructive"
+                          onClick={() => handleRemoveNonTeachingDay(entry.id)}
+                          aria-label="Remover dia não letivo"
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
+                    </div>
+                    {entry.kind === "specific-date" ? (
+                      <div className="flex items-center gap-2 text-sm">
+                        <input
+                          id={`nonTeachingDays.${index}.repeatsAnnually`}
+                          name={`nonTeachingDays.${index}.repeatsAnnually`}
+                          type="checkbox"
+                          checked={entry.repeatsAnnually}
+                          onChange={(event) =>
+                            handleNonTeachingDayChange(entry.id, "repeatsAnnually", event.currentTarget.checked)
+                          }
+                          className="h-4 w-4"
+                        />
+                        <Label htmlFor={`nonTeachingDays.${index}.repeatsAnnually`} className="text-sm">
+                          Repetir anualmente
+                        </Label>
+                      </div>
+                    ) : (
+                      <input
+                        type="hidden"
+                        name={`nonTeachingDays.${index}.repeatsAnnually`}
+                        value="false"
+                      />
+                    )}
+                    {entry.kind === "weekday" ? (
+                      <input type="hidden" name={`nonTeachingDays.${index}.date`} value="" />
+                    ) : (
+                      <input type="hidden" name={`nonTeachingDays.${index}.weekDay`} value="" />
+                    )}
+                    <div className="space-y-1">
+                      <Label htmlFor={`nonTeachingDays.${index}.description`}>Descrição</Label>
+                      <Input
+                        id={`nonTeachingDays.${index}.description`}
+                        name={`nonTeachingDays.${index}.description`}
+                        value={entry.description}
+                        onChange={(event) =>
+                          handleNonTeachingDayChange(entry.id, "description", event.currentTarget.value)
+                        }
+                        placeholder="ex.: Recesso acadêmico"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -535,35 +1013,25 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
         })}
       </div>
 
-      {state.status === "error" ? (
-        <div
-          role="alert"
-          className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive"
-        >
-          {state.message ?? "Não foi possível salvar as regras do sistema."}
-        </div>
-      ) : null}
-
-      {state.status === "success" ? (
-        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-800 dark:text-emerald-100">
-          {state.message}
-        </div>
-      ) : null}
-
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-xs text-muted-foreground">
+      <input type="hidden" name="logoAction" value={logoAction} />
+      <div className="space-y-4 rounded-lg border border-border/60 bg-muted/40 p-4 text-xs text-muted-foreground">
+        <p className="font-medium text-foreground">Resumo das alterações</p>
+        <ul className="list-disc space-y-1 pl-4">
+          <li>As cores selecionadas são aplicadas imediatamente para facilitar a visualização.</li>
+          <li>
+            Horários e dias não letivos são validados para evitar conflitos na geração da agenda.
+          </li>
           {lastUpdatedLabel ? (
-            <p>Última atualização registrada em {lastUpdatedLabel}.</p>
-          ) : (
-            <p>Os ajustes são aplicados imediatamente após a confirmação.</p>
-          )}
-        </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <Button type="button" variant="outline" onClick={handleRestoreAll}>
-            Restaurar todas as regras
-          </Button>
-          <SaveButton />
-        </div>
+            <li>Última atualização confirmada em {lastUpdatedLabel}.</li>
+          ) : null}
+        </ul>
+      </div>
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <Button type="button" variant="outline" onClick={handleRestoreAll}>
+          Restaurar todas as regras
+        </Button>
+        <SaveButton />
       </div>
     </form>
   );
@@ -758,6 +1226,10 @@ function createColorState(rules: SerializableSystemRules): ColorState {
     primary: rules.primaryColor.toUpperCase(),
     secondary: rules.secondaryColor.toUpperCase(),
     accent: rules.accentColor.toUpperCase(),
+    success: rules.successColor.toUpperCase(),
+    warning: rules.warningColor.toUpperCase(),
+    info: rules.infoColor.toUpperCase(),
+    danger: rules.dangerColor.toUpperCase(),
   };
 }
 
@@ -766,6 +1238,10 @@ function createDefaultColorState(): ColorState {
     primary: DEFAULT_COLOR_RULES.primaryColor.toUpperCase(),
     secondary: DEFAULT_COLOR_RULES.secondaryColor.toUpperCase(),
     accent: DEFAULT_COLOR_RULES.accentColor.toUpperCase(),
+    success: DEFAULT_COLOR_RULES.successColor.toUpperCase(),
+    warning: DEFAULT_COLOR_RULES.warningColor.toUpperCase(),
+    info: DEFAULT_COLOR_RULES.infoColor.toUpperCase(),
+    danger: DEFAULT_COLOR_RULES.dangerColor.toUpperCase(),
   };
 }
 
@@ -833,46 +1309,99 @@ function createDefaultPeriodFieldState(period: PeriodId): PeriodFieldState {
 }
 
 function createEmailDomainState(rules: SerializableSystemRules): EmailDomainFormState[] {
-  return mapDomainsToState(rules.allowedEmailDomains);
-}
+  if (rules.allowedEmailDomains.length === 0) {
+    return [{ id: generateDomainId(), value: "" }];
+  }
 
-function createDefaultEmailDomainState(): EmailDomainFormState[] {
-  return mapDomainsToState([...DEFAULT_ALLOWED_EMAIL_DOMAINS]);
-}
-
-function mapDomainsToState(domains: ReadonlyArray<string>): EmailDomainFormState[] {
-  const source = domains.length > 0 ? domains : [""];
-
-  return source.map((domain) => ({
+  return rules.allowedEmailDomains.map((domain) => ({
     id: generateDomainId(),
     value: domain,
   }));
 }
 
-function generateIntervalId(period: PeriodId): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return `${period}-${crypto.randomUUID()}`;
-  }
-
-  return `${period}-${Math.random().toString(36).slice(2, 10)}`;
+function createDefaultEmailDomainState(): EmailDomainFormState[] {
+  return DEFAULT_ALLOWED_EMAIL_DOMAINS.map((domain) => ({
+    id: generateDomainId(),
+    value: domain,
+  }));
 }
 
-function generateDomainId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return `domain-${crypto.randomUUID()}`;
+function createNonTeachingDaysState(rules: SerializableSystemRules): NonTeachingDayFormState[] {
+  if (rules.nonTeachingDays.length === 0) {
+    return createDefaultNonTeachingDaysState();
   }
 
+  return rules.nonTeachingDays.map((entry) => ({
+    id: entry.id || generateNonTeachingDayId(),
+    kind: entry.kind,
+    date: entry.kind === "specific-date" ? entry.date ?? "" : "",
+    weekDay: entry.kind === "weekday" ? String(entry.weekDay ?? "0") : "",
+    description: entry.description ?? "",
+    repeatsAnnually: entry.kind === "specific-date" ? Boolean(entry.repeatsAnnually) : false,
+  }));
+}
+
+function createDefaultNonTeachingDaysState(): NonTeachingDayFormState[] {
+  const defaults =
+    DEFAULT_SYSTEM_RULES.schedule.nonTeachingDays as Readonly<NonTeachingDayRuleMinutes[]>;
+
+  return defaults.map((entry) => ({
+    id: entry.id ?? generateNonTeachingDayId(),
+    kind: entry.kind,
+    date: entry.kind === "specific-date" ? entry.date ?? "" : "",
+    weekDay: entry.kind === "weekday" ? String(entry.weekDay ?? "0") : "",
+    description: entry.description ?? "",
+    repeatsAnnually: entry.kind === "specific-date" ? Boolean(entry.repeatsAnnually) : false,
+  }));
+}
+
+function createEmptyNonTeachingDay(
+  kind: "specific-date" | "weekday",
+  presetWeekDay?: string,
+): NonTeachingDayFormState {
+  return {
+    id: generateNonTeachingDayId(),
+    kind,
+    date: kind === "specific-date" ? "" : "",
+    weekDay: kind === "weekday" ? presetWeekDay ?? "0" : "",
+    description: "",
+    repeatsAnnually: kind === "specific-date" ? false : false,
+  };
+}
+
+function createBrandingState(rules: SerializableSystemRules): BrandingState {
+  return {
+    institutionName: rules.branding.institutionName,
+    logoUrl: rules.branding.logoUrl,
+  };
+}
+
+function createDefaultBrandingState(): BrandingState {
+  return {
+    institutionName: DEFAULT_SYSTEM_RULES.branding.institutionName,
+    logoUrl: DEFAULT_SYSTEM_RULES.branding.logoUrl,
+  };
+}
+
+function generateIntervalId(period: PeriodId) {
+  return `${period}-interval-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function generateDomainId() {
   return `domain-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function generateNonTeachingDayId() {
+  return `non-teaching-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function normalizeHexColor(value: string): string {
-  // Remove all leading #, uppercase, and ensure a single leading #
-  const hex = value.trim().replace(/^#+/, "").toUpperCase();
-  // Only allow 3 or 6 hex digits (shorthand or full), fallback to empty if invalid
-  const validHex = /^[0-9A-F]{3}$/.test(hex)
-    ? hex
-    : /^[0-9A-F]{6}$/.test(hex)
-    ? hex
-    : hex.slice(0, 6); // fallback: truncate to 6 chars
-  return `#${validHex}`;
+  const sanitized = value.trim().toUpperCase();
+  if (/^#[0-9A-F]{6}$/.test(sanitized)) {
+    return sanitized;
+  }
+  if (/^[0-9A-F]{6}$/.test(sanitized)) {
+    return `#${sanitized}`;
+  }
+  return "#000000";
 }

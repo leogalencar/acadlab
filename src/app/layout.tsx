@@ -21,6 +21,10 @@ export default async function RootLayout({
     primaryColor: rules.primaryColor,
     secondaryColor: rules.secondaryColor,
     accentColor: rules.accentColor,
+    successColor: rules.successColor,
+    warningColor: rules.warningColor,
+    infoColor: rules.infoColor,
+    dangerColor: rules.dangerColor,
   }) as CSSProperties;
 
   return (

@@ -1,5 +1,7 @@
 "use server";
 
+import { Buffer } from "node:buffer";
+
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { Role } from "@prisma/client";
@@ -7,8 +9,10 @@ import { Role } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import {
+  DEFAULT_SYSTEM_RULES,
   MINUTES_PER_DAY,
   PERIOD_IDS,
+  SUPPORTED_TIME_ZONES,
   SYSTEM_RULE_NAMES,
   type PeriodId,
 } from "@/features/system-rules/constants";
@@ -76,6 +80,51 @@ const emailDomainListSchema = z
   .array(emailDomainSchema)
   .min(1, "Defina ao menos um domínio de e-mail permitido.")
   .max(20, "Cadastre no máximo 20 domínios permitidos.");
+
+const timeZoneSchema = z
+  .string()
+  .refine((value) => SUPPORTED_TIME_ZONES.includes(value as (typeof SUPPORTED_TIME_ZONES)[number]), {
+    message: "Selecione um fuso horário válido.",
+  });
+
+const institutionNameSchema = z
+  .string()
+  .trim()
+  .min(2, "Informe o nome da instituição.")
+  .max(80, "O nome da instituição deve ter no máximo 80 caracteres.");
+
+const nonTeachingDaySchema = z
+  .object({
+    id: z.string().optional(),
+    kind: z.enum(["specific-date", "weekday"]),
+    date: z.string().optional(),
+    weekDay: z.string().optional(),
+    description: z.string().optional(),
+    repeatsAnnually: z.boolean().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.kind === "specific-date") {
+      if (!value.date || !/^\d{4}-\d{2}-\d{2}$/.test(value.date)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["date"],
+          message: "Informe uma data válida no formato AAAA-MM-DD.",
+        });
+      }
+      return;
+    }
+
+    if (value.kind === "weekday") {
+      const weekDayNumber = Number.parseInt(value.weekDay ?? "", 10);
+      if (!Number.isInteger(weekDayNumber) || weekDayNumber < 0 || weekDayNumber > 6) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["weekDay"],
+          message: "Selecione um dia da semana válido.",
+        });
+      }
+    }
+  });
 
 const periodSchema = z
   .object({
@@ -163,7 +212,16 @@ const systemRulesSchema = z
     primaryColor: colorSchema,
     secondaryColor: colorSchema,
     accentColor: colorSchema,
+    successColor: colorSchema,
+    warningColor: colorSchema,
+    infoColor: colorSchema,
+    dangerColor: colorSchema,
     allowedEmailDomains: emailDomainListSchema,
+    timeZone: timeZoneSchema,
+    institutionName: institutionNameSchema,
+    nonTeachingDays: z
+      .array(nonTeachingDaySchema)
+      .max(120, "Cadastre no máximo 120 dias não letivos."),
     morning: periodSchema,
     afternoon: periodSchema,
     evening: periodSchema,
@@ -248,11 +306,20 @@ export async function updateSystemRulesAction(
     };
   }
 
+  const nonTeachingDaysForm = extractNonTeachingDays(formData);
+
   const parsed = systemRulesSchema.safeParse({
     primaryColor: getStringValue(formData, "primaryColor"),
     secondaryColor: getStringValue(formData, "secondaryColor"),
     accentColor: getStringValue(formData, "accentColor"),
+    successColor: getStringValue(formData, "successColor"),
+    warningColor: getStringValue(formData, "warningColor"),
+    infoColor: getStringValue(formData, "infoColor"),
+    dangerColor: getStringValue(formData, "dangerColor"),
     allowedEmailDomains: extractAllowedDomains(formData),
+    timeZone: getStringValue(formData, "timeZone"),
+    institutionName: getStringValue(formData, "institutionName"),
+    nonTeachingDays: nonTeachingDaysForm,
     morning: buildPeriodFormPayload(formData, "morning"),
     afternoon: buildPeriodFormPayload(formData, "afternoon"),
     evening: buildPeriodFormPayload(formData, "evening"),
@@ -265,10 +332,58 @@ export async function updateSystemRulesAction(
 
   const data = parsed.data;
 
+  const brandingRecord = await prisma.systemRule.findUnique({
+    where: { name: SYSTEM_RULE_NAMES.BRANDING },
+    select: { value: true },
+  });
+
+  const currentBranding = parseBrandingRecord(brandingRecord?.value) ?? DEFAULT_SYSTEM_RULES.branding;
+
+  const rawLogoAction = getStringValue(formData, "logoAction");
+  const resolvedLogoAction = resolveLogoAction(rawLogoAction);
+
+  let logoUrlForPersistence: string | null | undefined;
+
+  if (resolvedLogoAction === "replace") {
+    const file = formData.get("logoFile");
+
+    if (!(file instanceof File) || file.size === 0) {
+      return { status: "error", message: "Selecione um arquivo de imagem válido para o logotipo." };
+    }
+
+    if (file.size > 256_000) {
+      return { status: "error", message: "O logotipo deve ter no máximo 256 KB." };
+    }
+
+    if (!isSupportedImageType(file.type)) {
+      return {
+        status: "error",
+        message: "Utilize um arquivo PNG, JPG ou SVG para o logotipo.",
+      };
+    }
+
+    try {
+      const buffer = Buffer.from(await file.arrayBuffer());
+      logoUrlForPersistence = `data:${file.type};base64,${buffer.toString("base64")}`;
+    } catch (error) {
+      console.error("[system-rules] Failed to process logo upload", error);
+      return {
+        status: "error",
+        message: "Não foi possível processar o arquivo de logotipo enviado.",
+      };
+    }
+  } else if (resolvedLogoAction === "remove") {
+    logoUrlForPersistence = null;
+  }
+
   const colorsPayload = {
     primaryColor: data.primaryColor,
     secondaryColor: data.secondaryColor,
     accentColor: data.accentColor,
+    successColor: data.successColor,
+    warningColor: data.warningColor,
+    infoColor: data.infoColor,
+    dangerColor: data.dangerColor,
   };
 
   const normalizedEmailDomains = Array.from(new Set(data.allowedEmailDomains));
@@ -277,7 +392,10 @@ export async function updateSystemRulesAction(
     domains: normalizedEmailDomains,
   };
 
+  const nonTeachingDaysPayload = buildNonTeachingDayPayload(data.nonTeachingDays);
+
   const schedulePayload = {
+    timeZone: data.timeZone,
     periods: PERIOD_IDS.reduce(
       (accumulator, period) => {
         accumulator[period] = mapPeriodForPersistence(data[period]);
@@ -285,6 +403,12 @@ export async function updateSystemRulesAction(
       },
       {} as Record<PeriodId, ReturnType<typeof mapPeriodForPersistence>>,
     ),
+    nonTeachingDays: nonTeachingDaysPayload,
+  };
+
+  const brandingPayload = {
+    institutionName: data.institutionName.trim(),
+    logoUrl: logoUrlForPersistence ?? currentBranding.logoUrl ?? null,
   };
 
   try {
@@ -295,6 +419,14 @@ export async function updateSystemRulesAction(
         create: {
           name: SYSTEM_RULE_NAMES.COLORS,
           value: colorsPayload,
+        },
+      }),
+      prisma.systemRule.upsert({
+        where: { name: SYSTEM_RULE_NAMES.BRANDING },
+        update: { value: brandingPayload },
+        create: {
+          name: SYSTEM_RULE_NAMES.BRANDING,
+          value: brandingPayload,
         },
       }),
       prisma.systemRule.upsert({
@@ -333,6 +465,7 @@ export async function updateSystemRulesAction(
 }
 
 type PeriodSchemaOutput = z.infer<typeof periodSchema>;
+type NonTeachingDaySchemaOutput = z.infer<typeof nonTeachingDaySchema>;
 
 function getStringValue(formData: FormData, name: string): string | undefined {
   const value = formData.get(name);
@@ -404,4 +537,160 @@ function mapPeriodForPersistence(period: PeriodSchemaOutput) {
         durationMinutes: interval.durationMinutes,
       })),
   };
+}
+
+function extractNonTeachingDays(formData: FormData) {
+  type EntryRecord = {
+    id?: string;
+    kind?: string;
+    date?: string;
+    weekDay?: string;
+    description?: string;
+    repeatsAnnually?: string;
+  };
+
+  const prefix = "nonTeachingDays.";
+  const entries = new Map<number, EntryRecord>();
+
+  for (const [key, rawValue] of formData.entries()) {
+    if (typeof rawValue !== "string" || !key.startsWith(prefix)) {
+      continue;
+    }
+
+    const match = key.slice(prefix.length).match(/^(\d+)\.(id|kind|date|weekDay|description|repeatsAnnually)$/);
+
+    if (!match) {
+      continue;
+    }
+
+    const index = Number.parseInt(match[1] ?? "", 10);
+
+    if (!Number.isFinite(index)) {
+      continue;
+    }
+
+    const field = match[2] as keyof EntryRecord;
+    const record = entries.get(index) ?? {};
+
+    record[field] = rawValue;
+    entries.set(index, record);
+  }
+
+  return Array.from(entries.entries())
+    .sort((left, right) => left[0] - right[0])
+    .map(([, record]) => ({
+      id: record.id,
+      kind: record.kind,
+      date: record.date,
+      weekDay: record.weekDay,
+      description: record.description,
+      repeatsAnnually: coerceCheckboxValue(record.repeatsAnnually),
+    }))
+    .filter((entry) => typeof entry.kind === "string");
+}
+
+function coerceCheckboxValue(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+
+  const normalized = value.toLowerCase();
+  return normalized === "on" || normalized === "true" || normalized === "1" || normalized === "yes";
+}
+
+function buildNonTeachingDayPayload(entries: NonTeachingDaySchemaOutput[]) {
+  const normalized: Array<{
+    id?: string;
+    kind: "specific-date" | "weekday";
+    date?: string;
+    weekDay?: number;
+    description?: string;
+    repeatsAnnually?: boolean;
+  }> = [];
+
+  const seen = new Set<string>();
+
+  for (const entry of entries) {
+    if (entry.kind === "weekday") {
+      const weekDayNumber = Number.parseInt(entry.weekDay ?? "0", 10);
+      const key = `weekday-${weekDayNumber}`;
+
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      normalized.push({
+        id: entry.id ?? undefined,
+        kind: "weekday",
+        weekDay: weekDayNumber,
+        description: sanitizeDescription(entry.description),
+      });
+      continue;
+    }
+
+    if (!entry.date) {
+      continue;
+    }
+
+    const annualKey = entry.repeatsAnnually ? entry.date.slice(5) : entry.date;
+    const key = `date-${entry.repeatsAnnually ? `annual-${annualKey}` : annualKey}`;
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    normalized.push({
+      id: entry.id ?? undefined,
+      kind: "specific-date",
+      date: entry.date,
+      description: sanitizeDescription(entry.description),
+      repeatsAnnually: entry.repeatsAnnually ? true : undefined,
+    });
+  }
+
+  return normalized;
+}
+
+function sanitizeDescription(description?: string) {
+  if (!description) {
+    return undefined;
+  }
+
+  const trimmed = description.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  return trimmed.length > 120 ? `${trimmed.slice(0, 117)}...` : trimmed;
+}
+
+function resolveLogoAction(value?: string | null): "keep" | "remove" | "replace" {
+  if (value === "remove" || value === "replace") {
+    return value;
+  }
+  return "keep";
+}
+
+const ALLOWED_LOGO_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/svg+xml"]);
+
+function isSupportedImageType(type: string | undefined) {
+  return typeof type === "string" && ALLOWED_LOGO_MIME_TYPES.has(type);
+}
+
+function parseBrandingRecord(value: unknown) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const logoUrl = typeof record.logoUrl === "string" ? record.logoUrl : null;
+  const institutionName =
+    typeof record.institutionName === "string" && record.institutionName.trim().length > 0
+      ? record.institutionName.trim()
+      : DEFAULT_SYSTEM_RULES.branding.institutionName;
+
+  return { logoUrl, institutionName };
 }

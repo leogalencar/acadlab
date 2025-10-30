@@ -1,66 +1,73 @@
 "use client";
 
-import { useMemo } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useMemo } from "react";
 import type { Role } from "@prisma/client";
 import type { LucideIcon } from "lucide-react";
 import { ChevronRight, Lock } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import { AccountMenu } from "@/features/dashboard/components/account-menu";
 import {
   DASHBOARD_NAV_ITEMS,
   type DashboardModule,
 } from "@/features/dashboard/constants/modules";
-import { AccountMenu } from "@/features/dashboard/components/account-menu";
+import type { BrandingSettings } from "@/features/system-rules/types";
+import { cn } from "@/lib/utils";
 
 interface ProtectedShellProps {
   userName: string;
   role: Role;
+  branding: BrandingSettings;
   children: React.ReactNode;
 }
 
-export function ProtectedShell({ userName, role, children }: ProtectedShellProps) {
+export function ProtectedShell({ userName, role, branding, children }: ProtectedShellProps) {
   const pathname = usePathname();
 
   const navItems = useMemo(
     () =>
-      DASHBOARD_NAV_ITEMS.filter((item) =>
-        item.roles.includes(role),
-      ),
+      DASHBOARD_NAV_ITEMS.filter((item) => item.roles.includes(role)),
     [role],
   );
 
+  const activeItemId = useMemo(() => {
+    let match: string | null = null;
+    let matchLength = 0;
+
+    navItems.forEach((item) => {
+      if (isActive(pathname, item.href)) {
+        if (item.href.length > matchLength) {
+          match = item.id;
+          matchLength = item.href.length;
+        }
+      }
+    });
+
+    return match;
+  }, [navItems, pathname]);
+
   return (
     <div className="flex min-h-screen bg-muted/40">
-      <aside className="hidden w-72 border-r border-border/60 bg-background/95 px-4 py-6 backdrop-blur md:flex md:flex-col">
-        <div className="mb-8 space-y-1">
-          <Link
-            href="/dashboard"
-            className="text-lg font-semibold tracking-tight text-foreground"
-          >
-            AcadLab
-          </Link>
-          <p className="text-sm text-muted-foreground">
-            Gestão integrada de laboratórios
-          </p>
-        </div>
+      <aside className="hidden w-72 border-r border-border/60 bg-sidebar px-4 py-6 text-sidebar-foreground shadow-sm backdrop-blur md:flex md:flex-col">
+        <BrandingArea branding={branding} />
         <nav className="flex flex-1 flex-col gap-1">
           {navItems.map((item) => (
             <SidebarLink
               key={item.id}
               item={item}
-              isActive={isActive(pathname, item.href)}
+              isActive={item.id === activeItemId}
             />
           ))}
         </nav>
-        <footer className="mt-8 rounded-lg border border-border/60 bg-muted/40 p-4 text-xs text-muted-foreground">
-          <p className="font-medium text-foreground">Precisa de acesso?</p>
+        <footer className="mt-8 rounded-lg border border-sidebar-border bg-sidebar/60 p-4 text-xs text-muted-foreground/80">
+          <p className="font-medium text-sidebar-foreground">Precisa de acesso?</p>
           <p>Contate um administrador para habilitar novos módulos no seu perfil.</p>
         </footer>
       </aside>
       <div className="flex flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-border/60 bg-background/85 px-4 py-4 backdrop-blur md:px-8">
+        <header className="flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-4 backdrop-blur md:px-8">
           <Breadcrumbs pathname={pathname} />
           <AccountMenu userName={userName} />
         </header>
@@ -68,6 +75,34 @@ export function ProtectedShell({ userName, role, children }: ProtectedShellProps
           <div className="mx-auto w-full max-w-5xl">{children}</div>
         </main>
       </div>
+    </div>
+  );
+}
+
+function BrandingArea({ branding }: { branding: BrandingSettings }) {
+  return (
+    <div className="mb-8 flex items-center gap-3 rounded-xl border border-sidebar-border bg-sidebar/50 p-3 shadow-sm">
+      <Link href="/dashboard" className="flex items-center gap-3">
+        <div className="flex size-11 items-center justify-center overflow-hidden rounded-lg border border-sidebar-border bg-background shadow-sm">
+          {branding.logoUrl ? (
+            <Image
+              src={branding.logoUrl}
+              alt={`${branding.institutionName} logo`}
+              width={44}
+              height={44}
+              className="size-11 object-contain"
+            />
+          ) : (
+            <span className="text-lg font-semibold tracking-tight text-sidebar-foreground">
+              {branding.institutionName.slice(0, 2).toUpperCase()}
+            </span>
+          )}
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-sidebar-foreground">{branding.institutionName}</p>
+          <p className="text-xs text-muted-foreground/80">Gestão integrada de laboratórios</p>
+        </div>
+      </Link>
     </div>
   );
 }
@@ -87,7 +122,7 @@ function SidebarLink({ item, isActive }: SidebarLinkProps) {
         className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground/70 transition-opacity"
         aria-disabled
       >
-        <span className="flex size-9 items-center justify-center rounded-md border border-dashed border-border/60 bg-muted/50 text-muted-foreground/80">
+        <span className="flex size-9 items-center justify-center rounded-md border border-dashed border-sidebar-border bg-muted/40 text-muted-foreground/80">
           <Lock className="size-4" aria-hidden />
         </span>
         <div className="flex flex-col">
@@ -104,21 +139,24 @@ function SidebarLink({ item, isActive }: SidebarLinkProps) {
       className={cn(
         "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
         isActive
-          ? "bg-primary text-primary-foreground shadow-sm"
-          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+          ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
+          : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
       )}
     >
       <span
         className={cn(
-          "flex size-9 items-center justify-center rounded-md border",
+          "flex size-9 items-center justify-center rounded-md border transition-colors",
           isActive
-            ? "border-primary-foreground/30 bg-primary-foreground/10 text-primary-foreground"
-            : "border-border/70 bg-muted/40 text-muted-foreground",
+            ? "border-sidebar-primary-foreground/20 bg-sidebar-primary-foreground/10 text-sidebar-primary-foreground"
+            : "border-sidebar-border bg-muted/20 text-muted-foreground group-hover:text-[var(--sidebar-icon-hover)]",
         )}
       >
         <Icon className="size-4" aria-hidden />
       </span>
-      <span>{item.title}</span>
+      <div className="flex flex-col">
+        <span>{item.title}</span>
+        <span className="text-xs font-normal text-muted-foreground/80">{item.description}</span>
+      </div>
     </Link>
   );
 }
@@ -169,6 +207,8 @@ function buildBreadcrumbItems(segments: string[]) {
     dashboard: "Painel",
     laboratories: "Laboratórios",
     scheduling: "Agenda",
+    agenda: "Minha agenda",
+    history: "Histórico de reservas",
     software: "Softwares",
     profile: "Meu perfil",
     users: "Usuários",

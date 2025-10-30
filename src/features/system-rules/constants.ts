@@ -6,6 +6,7 @@ export const MINUTES_PER_DAY = 24 * 60;
 
 export const SYSTEM_RULE_NAMES = {
   COLORS: "ui.colors",
+  BRANDING: "ui.branding",
   SCHEDULE: "schedule.periods",
   EMAIL_DOMAINS: "account.allowedEmailDomains",
 } as const;
@@ -33,7 +34,28 @@ export const DEFAULT_COLOR_RULES = {
   primaryColor: "#1D4ED8",
   secondaryColor: "#1E293B",
   accentColor: "#F97316",
+  successColor: "#059669",
+  warningColor: "#F59E0B",
+  infoColor: "#0EA5E9",
+  dangerColor: "#DC2626",
 } as const;
+
+export const DEFAULT_BRANDING_RULES = {
+  logoUrl: null as string | null,
+  institutionName: "AcadLab",
+} as const;
+
+export const SUPPORTED_TIME_ZONES = [
+  "America/Rio_Branco",
+  "America/Manaus",
+  "America/Cuiaba",
+  "America/Porto_Velho",
+  "America/Boa_Vista",
+  "America/Campo_Grande",
+  "America/Fortaleza",
+  "America/Bahia",
+  "America/Sao_Paulo",
+] as const;
 
 export const DEFAULT_PERIOD_RULES_MINUTES: Record<PeriodId, PeriodRuleMinutes> = {
   morning: {
@@ -71,10 +93,13 @@ export const DEFAULT_PERIOD_RULES_MINUTES: Record<PeriodId, PeriodRuleMinutes> =
   },
 };
 
-export const DEFAULT_SYSTEM_RULES_MINUTES = {
+export const DEFAULT_SYSTEM_RULES = {
   colors: DEFAULT_COLOR_RULES,
+  branding: DEFAULT_BRANDING_RULES,
   schedule: {
+    timeZone: "America/Sao_Paulo",
     periods: DEFAULT_PERIOD_RULES_MINUTES,
+    nonTeachingDays: [] as const,
   },
   account: {
     allowedEmailDomains: DEFAULT_ALLOWED_EMAIL_DOMAINS,

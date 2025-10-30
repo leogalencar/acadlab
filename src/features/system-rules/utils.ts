@@ -46,10 +46,18 @@ export function buildPaletteCssVariables(colors: {
   primaryColor: string;
   secondaryColor: string;
   accentColor: string;
+  successColor: string;
+  warningColor: string;
+  infoColor: string;
+  dangerColor: string;
 }): Record<string, string> {
   const primaryForeground = getReadableTextColor(colors.primaryColor);
   const secondaryForeground = getReadableTextColor(colors.secondaryColor);
   const accentForeground = getReadableTextColor(colors.accentColor);
+  const successForeground = getReadableTextColor(colors.successColor);
+  const warningForeground = getReadableTextColor(colors.warningColor);
+  const infoForeground = getReadableTextColor(colors.infoColor);
+  const dangerForeground = getReadableTextColor(colors.dangerColor);
 
   return {
     "--primary": colors.primaryColor,
@@ -67,6 +75,15 @@ export function buildPaletteCssVariables(colors: {
     "--sidebar-accent": colors.accentColor,
     "--sidebar-accent-foreground": accentForeground,
     "--ring": colors.accentColor,
+    "--success": colors.successColor,
+    "--success-foreground": successForeground,
+    "--warning": colors.warningColor,
+    "--warning-foreground": warningForeground,
+    "--info": colors.infoColor,
+    "--info-foreground": infoForeground,
+    "--danger": colors.dangerColor,
+    "--danger-foreground": dangerForeground,
+    "--sidebar-icon-hover": colors.infoColor,
   };
 }
 
