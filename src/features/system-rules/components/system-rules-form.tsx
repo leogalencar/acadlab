@@ -19,6 +19,7 @@ import {
   DEFAULT_ALLOWED_EMAIL_DOMAINS,
   DEFAULT_COLOR_RULES,
   DEFAULT_PERIOD_RULES_MINUTES,
+  DEFAULT_TIME_ZONE,
   PERIOD_IDS,
   type PeriodId,
 } from "@/features/system-rules/constants";
@@ -84,6 +85,26 @@ interface EmailDomainFormState {
   value: string;
 }
 
+interface AcademicPeriodFormState {
+  id: string;
+  name: string;
+  type: string;
+  startDate: string;
+  endDate: string;
+}
+
+const SUPPORTED_TIME_ZONES = typeof Intl.supportedValuesOf === "function"
+  ? Intl.supportedValuesOf("timeZone")
+  : ["UTC"];
+
+const ACADEMIC_PERIOD_TYPES = [
+  { value: "BIMESTER", label: "Bimestre" },
+  { value: "TRIMESTER", label: "Trimestre" },
+  { value: "SEMESTER", label: "Semestre" },
+  { value: "ANNUAL", label: "Anual" },
+  { value: "CUSTOM", label: "Personalizado" },
+] as const;
+
 export function SystemRulesForm({ rules }: SystemRulesFormProps) {
   const [state, formAction] = useActionState(updateSystemRulesAction, FORM_INITIAL_STATE);
 
@@ -97,6 +118,23 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
   const [emailDomains, setEmailDomains] = useState<EmailDomainFormState[]>(() =>
     createEmailDomainState(rules),
   );
+  const [timeZone, setTimeZone] = useState<string>(() => rules.timeZone ?? DEFAULT_TIME_ZONE);
+  const [academicPeriods, setAcademicPeriods] = useState<AcademicPeriodFormState[]>(() =>
+    createAcademicPeriodsState(rules),
+  );
+  const academicPeriodsJson = useMemo(
+    () =>
+      JSON.stringify(
+        academicPeriods.map((period) => ({
+          id: period.id,
+          name: period.name.trim(),
+          type: period.type,
+          startDate: period.startDate,
+          endDate: period.endDate,
+        })),
+      ),
+    [academicPeriods],
+  );
 
   const paletteBaseRef = useRef<Record<string, string> | null>(null);
 
@@ -105,6 +143,8 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
     setIntervalsByPeriod(createIntervalsState(rules));
     setPeriodFields(createPeriodFieldsState(rules));
     setEmailDomains(createEmailDomainState(rules));
+    setTimeZone(rules.timeZone ?? DEFAULT_TIME_ZONE);
+    setAcademicPeriods(createAcademicPeriodsState(rules));
   }, [rules]);
 
   useEffect(() => {
@@ -215,6 +255,47 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
         domain.id === domainId ? { ...domain, value: normalized } : domain,
       ),
     );
+  };
+
+  const handleTimeZoneChange = (nextValue: string) => {
+    setTimeZone(nextValue);
+  };
+
+  const handleRestoreTimeZone = () => {
+    setTimeZone(DEFAULT_TIME_ZONE);
+  };
+
+  const handleAcademicPeriodChange = (
+    periodId: string,
+    field: keyof Omit<AcademicPeriodFormState, "id">,
+    value: string,
+  ) => {
+    setAcademicPeriods((previous) =>
+      previous.map((period) =>
+        period.id === periodId ? { ...period, [field]: value } : period,
+      ),
+    );
+  };
+
+  const handleAddAcademicPeriod = () => {
+    setAcademicPeriods((previous) => [
+      ...previous,
+      {
+        id: generateAcademicPeriodId(),
+        name: "",
+        type: "SEMESTER",
+        startDate: "",
+        endDate: "",
+      },
+    ]);
+  };
+
+  const handleRemoveAcademicPeriod = (periodId: string) => {
+    setAcademicPeriods((previous) => previous.filter((period) => period.id !== periodId));
+  };
+
+  const handleRestoreAcademicPeriods = () => {
+    setAcademicPeriods(createDefaultAcademicPeriodsState());
   };
 
   const handleEmailDomainBlur = () => {
@@ -329,6 +410,8 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
     setPeriodFields(createDefaultPeriodFieldsState());
     setIntervalsByPeriod(createDefaultIntervalsState());
     setEmailDomains(createDefaultEmailDomainState());
+    setTimeZone(DEFAULT_TIME_ZONE);
+    setAcademicPeriods(createDefaultAcademicPeriodsState());
   };
 
   return (
@@ -372,6 +455,155 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
           />
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1">
+            <CardTitle className="text-xl">Fuso horário institucional</CardTitle>
+            <CardDescription>
+              Defina o fuso utilizado para gerar os horários de aulas e reservas em toda a plataforma.
+            </CardDescription>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={handleRestoreTimeZone}>
+            Restaurar fuso padrão
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="timeZone">Fuso horário</Label>
+            <Input
+              id="timeZone"
+              name="timeZone"
+              value={timeZone}
+              onChange={(event) => handleTimeZoneChange(event.currentTarget.value)}
+              list="timezone-options"
+              autoComplete="off"
+            />
+            <HelperText>
+              Utilize identificadores IANA, como <code>America/Sao_Paulo</code> ou <code>Europe/Lisbon</code>.
+            </HelperText>
+          </div>
+        </CardContent>
+      </Card>
+
+      <datalist id="timezone-options">
+        {SUPPORTED_TIME_ZONES.map((option) => (
+          <option key={option} value={option} />
+        ))}
+      </datalist>
+
+      <Card>
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1">
+            <CardTitle className="text-xl">Períodos letivos</CardTitle>
+            <CardDescription>
+              Controle os intervalos acadêmicos (bimestres, semestres, etc.) utilizados para programar alocações extensas de laboratórios.
+            </CardDescription>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleRestoreAcademicPeriods}
+          >
+            Limpar períodos
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <HelperText>
+            Cadastre os intervalos em que disciplinas utilizam laboratórios de forma recorrente. Essas informações ficam disponíveis ao alocar reservas por todo o período.
+          </HelperText>
+
+          {academicPeriods.length === 0 ? (
+            <div className="rounded-md border border-dashed border-border/60 bg-muted/40 p-4 text-sm text-muted-foreground">
+              Nenhum período letivo configurado. Adicione um período para iniciar.
+            </div>
+          ) : null}
+
+          <div className="space-y-4">
+            {academicPeriods.map((period, index) => (
+              <div
+                key={period.id}
+                className="space-y-4 rounded-lg border border-border/60 bg-background p-4 shadow-sm"
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-foreground">
+                    Período {index + 1}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleRemoveAcademicPeriod(period.id)}
+                    aria-label={`Remover período ${index + 1}`}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor={`academic-period-${period.id}-name`}>Nome do período</Label>
+                    <Input
+                      id={`academic-period-${period.id}-name`}
+                      value={period.name}
+                      onChange={(event) =>
+                        handleAcademicPeriodChange(period.id, "name", event.currentTarget.value)
+                      }
+                      placeholder="Ex.: 1º Semestre 2025"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor={`academic-period-${period.id}-type`}>Tipo</Label>
+                    <select
+                      id={`academic-period-${period.id}-type`}
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                      value={period.type}
+                      onChange={(event) =>
+                        handleAcademicPeriodChange(period.id, "type", event.currentTarget.value)
+                      }
+                    >
+                      {ACADEMIC_PERIOD_TYPES.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor={`academic-period-${period.id}-start`}>Data inicial</Label>
+                    <Input
+                      id={`academic-period-${period.id}-start`}
+                      type="date"
+                      value={period.startDate}
+                      onChange={(event) =>
+                        handleAcademicPeriodChange(period.id, "startDate", event.currentTarget.value)
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor={`academic-period-${period.id}-end`}>Data final</Label>
+                    <Input
+                      id={`academic-period-${period.id}-end`}
+                      type="date"
+                      value={period.endDate}
+                      onChange={(event) =>
+                        handleAcademicPeriodChange(period.id, "endDate", event.currentTarget.value)
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <Button type="button" variant="outline" size="sm" onClick={handleAddAcademicPeriod}>
+            <Plus className="mr-2 size-4" />
+            Adicionar período letivo
+          </Button>
+        </CardContent>
+      </Card>
+
+      <input type="hidden" name="academicPeriods" value={academicPeriodsJson} />
 
       <Card>
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -751,6 +983,32 @@ function SaveButton() {
       {pending ? "Salvando alterações..." : "Salvar regras"}
     </Button>
   );
+}
+
+function createAcademicPeriodsState(rules: SerializableSystemRules): AcademicPeriodFormState[] {
+  if (!rules.academicPeriods || rules.academicPeriods.length === 0) {
+    return [];
+  }
+
+  return rules.academicPeriods.map((period) => ({
+    id: period.id ?? generateAcademicPeriodId(),
+    name: period.name,
+    type: period.type,
+    startDate: period.startDate,
+    endDate: period.endDate,
+  }));
+}
+
+function createDefaultAcademicPeriodsState(): AcademicPeriodFormState[] {
+  return [];
+}
+
+function generateAcademicPeriodId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `period-${crypto.randomUUID()}`;
+  }
+
+  return `period-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function createColorState(rules: SerializableSystemRules): ColorState {

@@ -35,6 +35,10 @@ export const DEFAULT_COLOR_RULES = {
   accentColor: "#F97316",
 } as const;
 
+export const DEFAULT_TIME_ZONE = "America/Sao_Paulo";
+
+export const DEFAULT_ACADEMIC_PERIODS = [];
+
 export const DEFAULT_PERIOD_RULES_MINUTES: Record<PeriodId, PeriodRuleMinutes> = {
   morning: {
     firstClassTime: 7 * 60,
@@ -75,8 +79,10 @@ export const DEFAULT_SYSTEM_RULES_MINUTES = {
   colors: DEFAULT_COLOR_RULES,
   schedule: {
     periods: DEFAULT_PERIOD_RULES_MINUTES,
+    timeZone: DEFAULT_TIME_ZONE,
+    academicPeriods: DEFAULT_ACADEMIC_PERIODS,
   },
   account: {
     allowedEmailDomains: DEFAULT_ALLOWED_EMAIL_DOMAINS,
   },
-} as const;
+};

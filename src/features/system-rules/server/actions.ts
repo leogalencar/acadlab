@@ -15,6 +15,11 @@ import {
 import { calculatePeriodEnd } from "@/features/system-rules/utils";
 import type { SystemRulesActionState } from "@/features/system-rules/types";
 
+const SUPPORTED_TIME_ZONES =
+  typeof Intl.supportedValuesOf === "function"
+    ? new Set(Intl.supportedValuesOf("timeZone"))
+    : null;
+
 const colorSchema = z
   .string()
   .trim()
@@ -60,6 +65,58 @@ const intervalSchema = z.object({
   start: timeSchema,
   durationMinutes: intervalDurationSchema,
 });
+
+const timeZoneSchema = z
+  .string()
+  .trim()
+  .min(1, "Selecione um fuso horário válido.")
+  .transform((value) => value)
+  .refine(
+    (value) => {
+      if (!SUPPORTED_TIME_ZONES) {
+        return true;
+      }
+      return SUPPORTED_TIME_ZONES.has(value);
+    },
+    {
+      message: "Selecione um fuso horário válido.",
+    },
+  );
+
+const isoDateSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, {
+    message: "Informe a data no formato AAAA-MM-DD.",
+  });
+
+const academicPeriodTypeSchema = z.enum([
+  "BIMESTER",
+  "TRIMESTER",
+  "SEMESTER",
+  "ANNUAL",
+  "CUSTOM",
+] as const);
+
+const academicPeriodSchema = z
+  .object({
+    id: z.string().min(1, "Identificador do período ausente."),
+    name: z.string().trim().min(1, "Informe o nome do período letivo."),
+    type: academicPeriodTypeSchema,
+    startDate: isoDateSchema,
+    endDate: isoDateSchema,
+  })
+  .refine(
+    (period) => period.startDate <= period.endDate,
+    {
+      message: "A data de término deve ser posterior à data de início.",
+      path: ["endDate"],
+    },
+  );
+
+const academicPeriodsSchema = z
+  .array(academicPeriodSchema)
+  .max(20, "Cadastre no máximo 20 períodos letivos.");
 
 const emailDomainRegex = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i;
 
@@ -164,6 +221,8 @@ const systemRulesSchema = z
     secondaryColor: colorSchema,
     accentColor: colorSchema,
     allowedEmailDomains: emailDomainListSchema,
+    timeZone: timeZoneSchema,
+    academicPeriods: academicPeriodsSchema,
     morning: periodSchema,
     afternoon: periodSchema,
     evening: periodSchema,
@@ -253,6 +312,8 @@ export async function updateSystemRulesAction(
     secondaryColor: getStringValue(formData, "secondaryColor"),
     accentColor: getStringValue(formData, "accentColor"),
     allowedEmailDomains: extractAllowedDomains(formData),
+    timeZone: getStringValue(formData, "timeZone"),
+    academicPeriods: parseAcademicPeriodsField(formData),
     morning: buildPeriodFormPayload(formData, "morning"),
     afternoon: buildPeriodFormPayload(formData, "afternoon"),
     evening: buildPeriodFormPayload(formData, "evening"),
@@ -278,6 +339,14 @@ export async function updateSystemRulesAction(
   };
 
   const schedulePayload = {
+    timeZone: data.timeZone,
+    academicPeriods: data.academicPeriods.map((period) => ({
+      id: period.id,
+      name: period.name,
+      type: period.type,
+      startDate: period.startDate,
+      endDate: period.endDate,
+    })),
     periods: PERIOD_IDS.reduce(
       (accumulator, period) => {
         accumulator[period] = mapPeriodForPersistence(data[period]);
@@ -382,6 +451,27 @@ function extractIntervalFormValues(formData: FormData, period: PeriodId) {
       start: record.start ?? "",
       durationMinutes: record.durationMinutes ?? "",
     }));
+}
+
+function parseAcademicPeriodsField(formData: FormData) {
+  const raw = formData.get("academicPeriods");
+
+  if (typeof raw !== "string") {
+    return [];
+  }
+
+  const trimmed = raw.trim();
+
+  if (trimmed.length === 0) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 function extractAllowedDomains(formData: FormData): string[] {

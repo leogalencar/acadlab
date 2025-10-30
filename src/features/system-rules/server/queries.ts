@@ -122,6 +122,8 @@ function mapToSerializable(
     primaryColor: colors.primaryColor,
     secondaryColor: colors.secondaryColor,
     accentColor: colors.accentColor,
+    timeZone: schedule.timeZone,
+    academicPeriods: [...schedule.academicPeriods],
     periods,
     allowedEmailDomains: [...emailDomains.domains],
   };
@@ -194,14 +196,32 @@ function parseScheduleValue(
     return null;
   }
 
-  const parsed: ScheduleRuleMinutes["periods"] = {} as ScheduleRuleMinutes["periods"];
+  const parsedPeriods: ScheduleRuleMinutes["periods"] = {} as ScheduleRuleMinutes["periods"];
 
   for (const period of PERIOD_IDS) {
     const raw = (periods as Record<string, unknown>)[period];
-    parsed[period] = parsePeriodValue(raw, DEFAULT_PERIOD_RULES_MINUTES[period]);
+    parsedPeriods[period] = parsePeriodValue(raw, DEFAULT_PERIOD_RULES_MINUTES[period]);
   }
 
-  return { periods: parsed };
+  const timeZone =
+    typeof record.timeZone === "string" && record.timeZone.length > 0
+      ? record.timeZone
+      : DEFAULT_SYSTEM_RULES_MINUTES.schedule.timeZone;
+
+  const academicPeriods = Array.isArray(record.academicPeriods)
+    ? record.academicPeriods
+        .map((period) => parseAcademicPeriodValue(period))
+        .filter(
+          (period): period is ScheduleRuleMinutes["academicPeriods"][number] =>
+            period !== null,
+        )
+    : [];
+
+  return {
+    periods: parsedPeriods,
+    timeZone,
+    academicPeriods,
+  };
 }
 
 function parsePeriodValue(
@@ -237,6 +257,35 @@ function parsePeriodValue(
     classDurationMinutes,
     classesCount,
     intervals,
+  };
+}
+
+function parseAcademicPeriodValue(value: unknown): ScheduleRuleMinutes["academicPeriods"][number] | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const id = typeof record.id === "string" ? record.id : null;
+  const name = typeof record.name === "string" ? record.name : null;
+  const type = typeof record.type === "string" ? record.type : null;
+  const startDate = typeof record.startDate === "string" ? record.startDate : null;
+  const endDate = typeof record.endDate === "string" ? record.endDate : null;
+
+  if (!id || !name || !type || !startDate || !endDate) {
+    return null;
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+    return null;
+  }
+
+  return {
+    id,
+    name,
+    type: type as ScheduleRuleMinutes["academicPeriods"][number]["type"],
+    startDate,
+    endDate,
   };
 }
 
