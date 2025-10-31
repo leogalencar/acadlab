@@ -9,6 +9,7 @@ import {
 } from "@/features/system-rules/constants";
 import { formatMinutesToTime } from "@/features/system-rules/utils";
 import type {
+  AcademicPeriodRule,
   NonTeachingDayRule,
   NonTeachingDayRuleMinutes,
   PeriodRuleMinutes,
@@ -40,6 +41,7 @@ export async function getSystemRules(): Promise<SerializableSystemRules> {
     timeZone: DEFAULT_SYSTEM_RULES.schedule.timeZone,
     periods: DEFAULT_SYSTEM_RULES.schedule.periods,
     nonTeachingDays: [...DEFAULT_SYSTEM_RULES.schedule.nonTeachingDays] as NonTeachingDayRuleMinutes[],
+    academicPeriod: DEFAULT_SYSTEM_RULES.schedule.academicPeriod,
   };
 
   const fallback = mapToSerializable(
@@ -140,6 +142,8 @@ function mapToSerializable(
     return accumulator;
   }, {} as SerializableSystemRules["periods"]);
 
+  const academicPeriod = schedule.academicPeriod ?? DEFAULT_SYSTEM_RULES.schedule.academicPeriod;
+
   return {
     primaryColor: colors.primaryColor,
     secondaryColor: colors.secondaryColor,
@@ -170,6 +174,11 @@ function mapToSerializable(
     branding: { logoUrl: branding.logoUrl, institutionName: branding.institutionName },
     periods,
     allowedEmailDomains: [...emailDomains.domains],
+    academicPeriod: {
+      label: academicPeriod.label,
+      durationWeeks: academicPeriod.durationWeeks,
+      description: academicPeriod.description ?? undefined,
+    },
   };
 }
 
@@ -252,6 +261,7 @@ function parseScheduleValue(
         .map((entry) => parseNonTeachingDay(entry))
         .filter((rule): rule is NonTeachingDayRuleMinutes => rule !== null)
     : [];
+  const academicPeriod = parseAcademicPeriodValue(record.academicPeriod) ?? DEFAULT_SYSTEM_RULES.schedule.academicPeriod;
 
   if (!periods || typeof periods !== "object") {
     return null;
@@ -264,7 +274,7 @@ function parseScheduleValue(
     parsed[period] = parsePeriodValue(raw, DEFAULT_PERIOD_RULES_MINUTES[period]);
   }
 
-  return { timeZone, periods: parsed, nonTeachingDays };
+  return { timeZone, periods: parsed, nonTeachingDays, academicPeriod };
 }
 
 function parseNonTeachingDay(value: unknown): NonTeachingDayRuleMinutes | null {
@@ -356,6 +366,28 @@ function parseIntervalValue(value: unknown): PeriodRuleMinutes["intervals"][numb
   return {
     start,
     durationMinutes,
+  };
+}
+
+function parseAcademicPeriodValue(value: unknown): AcademicPeriodRule | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const rawLabel = typeof record.label === "string" ? record.label.trim() : "";
+  const rawDuration = record.durationWeeks;
+
+  if (!rawLabel || typeof rawDuration !== "number" || !Number.isInteger(rawDuration) || rawDuration <= 0) {
+    return null;
+  }
+
+  const description = typeof record.description === "string" ? record.description : undefined;
+
+  return {
+    label: rawLabel,
+    durationWeeks: rawDuration,
+    description,
   };
 }
 

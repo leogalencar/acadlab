@@ -5,11 +5,25 @@ import "./globals.css";
 import { getSystemRules } from "@/features/system-rules/server/queries";
 import { buildPaletteCssVariables } from "@/features/system-rules/utils";
 
-export const metadata: Metadata = {
-  title: "AcadLab",
-  description:
-    "Plataforma AcadLab para gestão de laboratórios, reservas e solicitações de software da Fatec.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const rules = await getSystemRules();
+  const brandName = rules.branding.institutionName;
+  const logoUrl = rules.branding.logoUrl ?? undefined;
+
+  return {
+    title: {
+      default: brandName,
+      template: `%s • ${brandName}`,
+    },
+    description: `${brandName} — plataforma baseada em AcadLab para gestão de laboratórios e reservas acadêmicas.`,
+    icons: logoUrl
+      ? {
+          icon: [{ url: logoUrl }],
+          shortcut: [{ url: logoUrl }],
+        }
+      : undefined,
+  };
+}
 
 export default async function RootLayout({
   children,

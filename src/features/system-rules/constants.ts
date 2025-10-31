@@ -100,6 +100,11 @@ export const DEFAULT_SYSTEM_RULES = {
     timeZone: "America/Sao_Paulo",
     periods: DEFAULT_PERIOD_RULES_MINUTES,
     nonTeachingDays: [] as const,
+    academicPeriod: {
+      label: "Semestre acadêmico",
+      durationWeeks: 20,
+      description: "Período padrão para turmas semestrais.",
+    },
   },
   account: {
     allowedEmailDomains: DEFAULT_ALLOWED_EMAIL_DOMAINS,

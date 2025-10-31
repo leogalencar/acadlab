@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { UserCog } from "lucide-react";
+import { Moon, Sun, UserCog } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { signOutAction } from "@/features/auth/server/actions";
@@ -15,6 +15,7 @@ export function AccountMenu({ userName }: AccountMenuProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [signingOut, startTransition] = useTransition();
+  const [theme, setTheme] = useState<"light" | "dark">("light");
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -42,6 +43,22 @@ export function AccountMenu({ userName }: AccountMenuProps) {
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [open]);
+
+  useEffect(() => {
+    const storedTheme = typeof window !== "undefined" ? window.localStorage.getItem("theme") : null;
+    const nextTheme = storedTheme === "dark" ? "dark" : "light";
+    setTheme(nextTheme);
+    document.documentElement.classList.toggle("dark", nextTheme === "dark");
+  }, []);
+
+  const toggleTheme = () => {
+    setTheme((current) => {
+      const next = current === "dark" ? "light" : "dark";
+      document.documentElement.classList.toggle("dark", next === "dark");
+      window.localStorage.setItem("theme", next);
+      return next;
+    });
+  };
 
   return (
     <div className="relative" ref={containerRef}>
@@ -75,6 +92,14 @@ export function AccountMenu({ userName }: AccountMenuProps) {
             >
               Meu perfil
             </Link>
+            <button
+              type="button"
+              className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              onClick={toggleTheme}
+            >
+              <span>Tema {theme === "dark" ? "claro" : "escuro"}</span>
+              {theme === "dark" ? <Sun className="size-4" aria-hidden /> : <Moon className="size-4" aria-hidden />}
+            </button>
             <button
               type="button"
               disabled={signingOut}

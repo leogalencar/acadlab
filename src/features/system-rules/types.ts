@@ -32,6 +32,12 @@ export interface BrandingSettings {
   institutionName: string;
 }
 
+export interface AcademicPeriodRule {
+  label: string;
+  durationWeeks: number;
+  description?: string | null;
+}
+
 export interface SerializableSystemRules {
   primaryColor: string;
   secondaryColor: string;
@@ -42,6 +48,7 @@ export interface SerializableSystemRules {
   dangerColor: string;
   timeZone: string;
   branding: BrandingSettings;
+  academicPeriod: AcademicPeriodRule;
   nonTeachingDays: NonTeachingDayRule[];
   periods: Record<PeriodId, PeriodRuleInput>;
   allowedEmailDomains: string[];
@@ -73,6 +80,7 @@ export interface ScheduleRuleMinutes {
   timeZone: string;
   periods: Record<PeriodId, PeriodRuleMinutes>;
   nonTeachingDays: NonTeachingDayRuleMinutes[];
+  academicPeriod: AcademicPeriodRule;
 }
 
 export type SystemRulesActionState = {

@@ -6,9 +6,10 @@ import { ModuleCard } from "@/features/dashboard/components/module-card";
 interface DashboardBoardProps {
   userName: string;
   role: Role;
+  brandName: string;
 }
 
-export function DashboardBoard({ userName, role }: DashboardBoardProps) {
+export function DashboardBoard({ userName, role, brandName }: DashboardBoardProps) {
   const firstName = userName.trim().split(" ")[0] || userName;
   const availableModules = DASHBOARD_MODULES.filter((module) =>
     module.roles.includes(role),
@@ -23,9 +24,10 @@ export function DashboardBoard({ userName, role }: DashboardBoardProps) {
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Painel de módulos</h1>
           <p className="text-muted-foreground">
-            Selecione um módulo abaixo para gerenciar as rotinas do AcadLab de acordo com seu perfil de acesso.
+            Selecione um módulo abaixo para gerenciar as rotinas do {brandName} de acordo com seu perfil de acesso.
             Para ajustar informações da sua conta, utilize o ícone de configurações no canto superior direito.
           </p>
+          <p className="text-xs text-muted-foreground/80">Baseado na plataforma AcadLab.</p>
         </div>
       </header>
 

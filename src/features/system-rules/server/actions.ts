@@ -81,6 +81,25 @@ const emailDomainListSchema = z
   .min(1, "Defina ao menos um domínio de e-mail permitido.")
   .max(20, "Cadastre no máximo 20 domínios permitidos.");
 
+const academicPeriodLabelSchema = z
+  .string()
+  .trim()
+  .min(3, "Informe o nome do período letivo.")
+  .max(60, "O nome do período letivo deve ter no máximo 60 caracteres.");
+
+const academicPeriodDurationSchema = z
+  .coerce
+  .number({ invalid_type_error: "Informe a duração do período em semanas." })
+  .int("Utilize apenas números inteiros para a duração.")
+  .min(1, "Defina ao menos 1 semana para o período letivo.")
+  .max(52, "Defina no máximo 52 semanas para o período letivo.");
+
+const academicPeriodDescriptionSchema = z
+  .string()
+  .trim()
+  .max(160, "A descrição do período deve ter no máximo 160 caracteres.")
+  .optional();
+
 const timeZoneSchema = z
   .string()
   .refine((value) => SUPPORTED_TIME_ZONES.includes(value as (typeof SUPPORTED_TIME_ZONES)[number]), {
@@ -222,6 +241,9 @@ const systemRulesSchema = z
     nonTeachingDays: z
       .array(nonTeachingDaySchema)
       .max(120, "Cadastre no máximo 120 dias não letivos."),
+    classPeriodLabel: academicPeriodLabelSchema,
+    classPeriodDurationWeeks: academicPeriodDurationSchema,
+    classPeriodDescription: academicPeriodDescriptionSchema,
     morning: periodSchema,
     afternoon: periodSchema,
     evening: periodSchema,
@@ -320,6 +342,9 @@ export async function updateSystemRulesAction(
     timeZone: getStringValue(formData, "timeZone"),
     institutionName: getStringValue(formData, "institutionName"),
     nonTeachingDays: nonTeachingDaysForm,
+    classPeriodLabel: getStringValue(formData, "classPeriodLabel"),
+    classPeriodDurationWeeks: getStringValue(formData, "classPeriodDurationWeeks"),
+    classPeriodDescription: getStringValue(formData, "classPeriodDescription"),
     morning: buildPeriodFormPayload(formData, "morning"),
     afternoon: buildPeriodFormPayload(formData, "afternoon"),
     evening: buildPeriodFormPayload(formData, "evening"),
@@ -393,6 +418,14 @@ export async function updateSystemRulesAction(
   };
 
   const nonTeachingDaysPayload = buildNonTeachingDayPayload(data.nonTeachingDays);
+  const academicPeriodPayload = {
+    label: data.classPeriodLabel.trim(),
+    durationWeeks: data.classPeriodDurationWeeks,
+    description:
+      data.classPeriodDescription && data.classPeriodDescription.trim().length > 0
+        ? data.classPeriodDescription.trim()
+        : undefined,
+  };
 
   const schedulePayload = {
     timeZone: data.timeZone,
@@ -404,6 +437,7 @@ export async function updateSystemRulesAction(
       {} as Record<PeriodId, ReturnType<typeof mapPeriodForPersistence>>,
     ),
     nonTeachingDays: nonTeachingDaysPayload,
+    academicPeriod: academicPeriodPayload,
   };
 
   const brandingPayload = {

@@ -7,7 +7,7 @@ import { getUpcomingReservations } from "@/features/scheduling/server/queries";
 import { getSystemRules } from "@/features/system-rules/server/queries";
 
 export const metadata: Metadata = {
-  title: "Minha agenda • AcadLab",
+  title: "Minha agenda",
 };
 
 export default async function AgendaPage() {
@@ -29,6 +29,7 @@ export default async function AgendaPage() {
     <AgendaList
       reservations={reservations}
       actorRole={session.user.role}
+      actorId={session.user.id}
       timeZone={systemRules.timeZone}
       nonTeachingRules={systemRules.nonTeachingDays}
     />

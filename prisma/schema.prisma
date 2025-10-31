@@ -115,6 +115,7 @@ model Reservation {
   startTime          DateTime
   endTime            DateTime
   status             ReservationStatus @default(PENDING)
+  subject            String?
   cancellationReason String?           @db.Text
   cancelledAt        DateTime?
   recurrenceId       String?
@@ -135,6 +136,7 @@ model ReservationRecurrence {
   frequency    RecurrenceFrequency
   interval     Int                 @default(1)
   weekDay      Int?
+  subject      String?
   startDate    DateTime
   endDate      DateTime?
   createdAt    DateTime            @default(now())

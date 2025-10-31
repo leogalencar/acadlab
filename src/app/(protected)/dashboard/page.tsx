@@ -3,10 +3,11 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { DashboardBoard } from "@/features/dashboard/components/dashboard-board";
+import { getSystemRules } from "@/features/system-rules/server/queries";
 import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = {
-  title: "Painel • AcadLab",
+  title: "Painel",
 };
 
 export default async function DashboardPage() {
@@ -18,12 +19,15 @@ export default async function DashboardPage() {
 
   const { role, id } = session.user;
 
-  const user = await prisma.user.findUnique({
-    where: { id },
-    select: { name: true },
-  });
+  const [user, systemRules] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id },
+      select: { name: true },
+    }),
+    getSystemRules(),
+  ]);
 
   const displayName = user?.name ?? session.user.name ?? "Usuário";
 
-  return <DashboardBoard userName={displayName} role={role} />;
+  return <DashboardBoard userName={displayName} role={role} brandName={systemRules.branding.institutionName} />;
 }

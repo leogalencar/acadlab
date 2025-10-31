@@ -9,7 +9,7 @@ import { buildSoftwareFiltersState, getSoftwareCatalog } from "@/features/softwa
 import { resolveSearchParams, type SearchParamsLike } from "@/features/shared/search-params";
 
 export const metadata: Metadata = {
-  title: "Catálogo de softwares • AcadLab",
+  title: "Catálogo de softwares",
 };
 
 type SoftwareSearchParams = Record<string, string | string[] | undefined>;

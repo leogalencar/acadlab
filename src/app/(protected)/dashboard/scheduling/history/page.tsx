@@ -7,7 +7,7 @@ import { getReservationHistory } from "@/features/scheduling/server/queries";
 import { getSystemRules } from "@/features/system-rules/server/queries";
 
 export const metadata: Metadata = {
-  title: "Histórico de reservas • AcadLab",
+  title: "Histórico de reservas",
 };
 
 export default async function HistoryPage() {

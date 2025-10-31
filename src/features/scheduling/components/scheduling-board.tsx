@@ -21,11 +21,14 @@ import {
   DatePickerCalendar,
   type CalendarDayState,
 } from "@/features/scheduling/components/date-picker-calendar";
+import { AssignClassPeriodDialog } from "@/features/scheduling/components/assign-class-period-dialog";
 import { createReservationAction } from "@/features/scheduling/server/actions";
 import type {
+  AcademicPeriodSummary,
   DailySchedule,
   ReservationSlot,
   SerializableLaboratoryOption,
+  SerializableUserOption,
 } from "@/features/scheduling/types";
 import type { NonTeachingDayRule } from "@/features/system-rules/types";
 import { findNonTeachingRuleForDate, formatIsoDateInTimeZone } from "@/features/scheduling/utils";
@@ -39,6 +42,8 @@ interface SchedulingBoardProps {
   actorRole: Role;
   timeZone: string;
   nonTeachingRules: NonTeachingDayRule[];
+  teacherOptions?: SerializableUserOption[];
+  classPeriod?: AcademicPeriodSummary | null;
 }
 
 const OCCURRENCE_OPTIONS = Array.from({ length: 12 }, (_, index) => index + 1);
@@ -51,6 +56,8 @@ export function SchedulingBoard({
   actorRole,
   timeZone,
   nonTeachingRules,
+  teacherOptions = [],
+  classPeriod,
 }: SchedulingBoardProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -177,6 +184,11 @@ export function SchedulingBoard({
   }, [selectedDate, timeZone]);
 
   const canScheduleRecurrence = actorRole === Role.ADMIN || actorRole === Role.TECHNICIAN;
+  const canManageClassPeriod = actorRole === Role.ADMIN || actorRole === Role.TECHNICIAN;
+  const hasTeacherOptions = teacherOptions.length > 0;
+  const handleClassPeriodSuccess = useCallback(() => {
+    setSelectedSlots(new Set());
+  }, []);
 
   const selectionSummary = useMemo(() => {
     if (selectedSlotIds.length === 0) {
@@ -358,28 +370,45 @@ export function SchedulingBoard({
                   <input type="hidden" name="occurrences" value="1" />
                 )}
 
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="text-sm text-muted-foreground">
                     {selectionSummary ?? "Nenhum horário selecionado."}
                   </div>
-                  <Button
-                    type="submit"
-                    disabled={
-                      selectedSlotIds.length === 0 ||
-                      isSubmitting ||
-                      schedule.isNonTeachingDay
-                    }
-                    className="sm:w-auto"
-                  >
-                    {isSubmitting ? (
-                      <span className="flex items-center gap-2">
-                        <Loader2 className="size-4 animate-spin" aria-hidden />
-                        Registrando reserva…
-                      </span>
-                    ) : (
-                      "Confirmar reserva"
-                    )}
-                  </Button>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                    {canManageClassPeriod && hasTeacherOptions ? (
+                      <AssignClassPeriodDialog
+                        teacherOptions={teacherOptions}
+                        selectedLaboratoryId={selectedLaboratoryId}
+                        selectedDate={selectedDate}
+                        selectedSlotIds={selectedSlotIds}
+                        classPeriod={classPeriod}
+                        disabled={
+                          selectedSlotIds.length === 0 ||
+                          schedule.isNonTeachingDay ||
+                          teacherOptions.length === 0
+                        }
+                        onSuccess={handleClassPeriodSuccess}
+                      />
+                    ) : null}
+                    <Button
+                      type="submit"
+                      disabled={
+                        selectedSlotIds.length === 0 ||
+                        isSubmitting ||
+                        schedule.isNonTeachingDay
+                      }
+                      className="sm:w-auto"
+                    >
+                      {isSubmitting ? (
+                        <span className="flex items-center gap-2">
+                          <Loader2 className="size-4 animate-spin" aria-hidden />
+                          Registrando reserva…
+                        </span>
+                      ) : (
+                        "Confirmar reserva"
+                      )}
+                    </Button>
+                  </div>
                 </div>
 
                 {formState.status !== "idle" ? (
@@ -469,7 +498,8 @@ function getStatusLabel(slot: ReservationSlot, isDayDisabled: boolean): string {
     const owner = slot.reservation.createdBy.name;
     const statusText =
       slot.reservation.status === ReservationStatus.PENDING ? "aguardando confirmação" : "confirmada";
-    return `Reservado por ${owner} (${statusText})`;
+    const subjectSuffix = slot.reservation.subject ? ` • ${slot.reservation.subject}` : "";
+    return `Reservado por ${owner} (${statusText})${subjectSuffix}`;
   }
 
   if (slot.isPast) {

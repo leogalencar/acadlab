@@ -10,7 +10,7 @@ import { getAllowedEmailDomains } from "@/features/system-rules/server/queries";
 import { resolveSearchParams, type SearchParamsLike } from "@/features/shared/search-params";
 
 export const metadata: Metadata = {
-  title: "Gestão de usuários • AcadLab",
+  title: "Gestão de usuários",
 };
 
 type UsersSearchParams = Record<string, string | string[] | undefined>;

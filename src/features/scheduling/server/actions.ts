@@ -16,14 +16,16 @@ import {
 import { getReservationsForDay } from "@/features/scheduling/server/queries";
 import type { ActionState } from "@/features/shared/types";
 import { getSystemRules } from "@/features/system-rules/server/queries";
+import type { SerializableSystemRules } from "@/features/system-rules/types";
 
 const MAX_OCCURRENCES = 26;
+const CANCEL_REASON_MAX_LENGTH = 500;
 
 const createReservationSchema = z.object({
   laboratoryId: z.string().min(1, "Selecione um laboratório válido."),
   date: z
     .string()
-    .regex(/^(\\d{4})-(\\d{2})-(\\d{2})$/, "Informe uma data válida."),
+    .regex(/^(\d{4})-(\d{2})-(\d{2})$/, "Informe uma data válida."),
   slotIds: z
     .array(z.string().min(1))
     .min(1, "Selecione pelo menos um horário."),
@@ -43,6 +45,39 @@ const createReservationSchema = z.object({
 
       return Math.min(parsed, MAX_OCCURRENCES);
     }),
+});
+
+const cancelReservationSchema = z.object({
+  reservationId: z.string().min(1, "Selecione uma reserva válida."),
+  reason: z
+    .string()
+    .optional()
+    .transform((value) => {
+      if (!value) {
+        return undefined;
+      }
+
+      const trimmed = value.trim();
+      return trimmed.length > 0 ? trimmed : undefined;
+    })
+    .refine(
+      (value) => !value || value.length <= CANCEL_REASON_MAX_LENGTH,
+      `O motivo do cancelamento deve ter no máximo ${CANCEL_REASON_MAX_LENGTH} caracteres.`,
+    ),
+});
+
+const assignClassPeriodSchema = z.object({
+  teacherId: z.string().min(1, "Selecione um professor."),
+  laboratoryId: z.string().min(1, "Selecione um laboratório válido."),
+  date: z
+    .string()
+    .regex(/^(\d{4})-(\d{2})-(\d{2})$/, "Informe uma data válida."),
+  slotIds: z.array(z.string().min(1)).min(1, "Selecione pelo menos um horário."),
+  subject: z
+    .string()
+    .trim()
+    .min(2, "Informe a disciplina ou turma.")
+    .max(120, "O nome da disciplina deve ter no máximo 120 caracteres."),
 });
 
 export async function createReservationAction(
@@ -310,6 +345,7 @@ export async function createReservationAction(
   revalidatePath("/dashboard/scheduling");
   revalidatePath("/dashboard/scheduling/agenda");
   revalidatePath("/dashboard/scheduling/history");
+  revalidatePath("/dashboard/scheduling/overview");
 
   const successMessage =
     occurrences > 1
@@ -317,6 +353,372 @@ export async function createReservationAction(
       : "Reserva confirmada com sucesso.";
 
   return { status: "success", message: successMessage };
+}
+
+export async function cancelReservationAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await auth();
+
+  if (!session?.user) {
+    return {
+      status: "error",
+      message: "Você precisa estar autenticado para cancelar uma reserva.",
+    };
+  }
+
+  const parsed = cancelReservationSchema.safeParse({
+    reservationId: formData.get("reservationId"),
+    reason: formData.get("reason"),
+  });
+
+  if (!parsed.success) {
+    const message = parsed.error.issues[0]?.message ?? "Não foi possível validar o cancelamento.";
+    return { status: "error", message };
+  }
+
+  const { reservationId, reason } = parsed.data;
+
+  const reservation = await prisma.reservation.findUnique({
+    where: { id: reservationId },
+    select: {
+      id: true,
+      status: true,
+      createdById: true,
+      startTime: true,
+      endTime: true,
+    },
+  });
+
+  if (!reservation) {
+    return {
+      status: "error",
+      message: "Reserva não encontrada. Atualize a página e tente novamente.",
+    };
+  }
+
+  const canCancel =
+    session.user.role === Role.ADMIN ||
+    session.user.role === Role.TECHNICIAN ||
+    reservation.createdById === session.user.id;
+
+  if (!canCancel) {
+    return {
+      status: "error",
+      message: "Você não tem permissão para cancelar esta reserva.",
+    };
+  }
+
+  if (reservation.status === ReservationStatus.CANCELLED) {
+    return {
+      status: "success",
+      message: "Esta reserva já havia sido cancelada anteriormente.",
+    };
+  }
+
+  const cancellationReason = reason ?? null;
+
+  try {
+    await prisma.reservation.update({
+      where: { id: reservationId },
+      data: {
+        status: ReservationStatus.CANCELLED,
+        cancellationReason,
+        cancelledAt: new Date(),
+      },
+    });
+  } catch (error) {
+    console.error("[scheduling] Failed to cancel reservation", error);
+    return {
+      status: "error",
+      message: "Não foi possível cancelar a reserva. Tente novamente mais tarde.",
+    };
+  }
+
+  revalidatePath("/dashboard/scheduling");
+  revalidatePath("/dashboard/scheduling/agenda");
+  revalidatePath("/dashboard/scheduling/history");
+  revalidatePath("/dashboard/scheduling/overview");
+
+  return {
+    status: "success",
+    message: "Reserva cancelada com sucesso.",
+  };
+}
+
+export async function assignClassPeriodReservationAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await auth();
+
+  if (
+    !session?.user ||
+    (session.user.role !== Role.ADMIN && session.user.role !== Role.TECHNICIAN)
+  ) {
+    return {
+      status: "error",
+      message: "Você não tem permissão para agendar períodos letivos.",
+    };
+  }
+
+  const rawSlotIds = formData
+    .getAll("slotIds")
+    .filter((value): value is string => typeof value === "string" && value.length > 0);
+
+  const parsed = assignClassPeriodSchema.safeParse({
+    teacherId: formData.get("teacherId"),
+    laboratoryId: formData.get("laboratoryId"),
+    date: formData.get("date"),
+    subject: formData.get("subject"),
+    slotIds: rawSlotIds,
+  });
+
+  if (!parsed.success) {
+    const message = parsed.error.issues[0]?.message ?? "Não foi possível validar os dados do agendamento.";
+    return { status: "error", message };
+  }
+
+  const { teacherId, laboratoryId, date, subject, slotIds } = parsed.data;
+
+  const teacher = await prisma.user.findUnique({
+    where: { id: teacherId },
+    select: {
+      id: true,
+      name: true,
+      role: true,
+    },
+  });
+
+  if (!teacher || teacher.role !== Role.PROFESSOR) {
+    return {
+      status: "error",
+      message: "Selecione um professor válido para o agendamento.",
+    };
+  }
+
+  const systemRules = await getSystemRules();
+  const academicPeriod = resolveAcademicPeriodConfig(systemRules);
+
+  if (!academicPeriod) {
+    return {
+      status: "error",
+      message:
+        "Configure o período letivo nas regras do sistema antes de criar um agendamento completo.",
+    };
+  }
+
+  const uniqueSlots = Array.from(new Set(slotIds));
+  const dayReservations = await getReservationsForDay({
+    laboratoryId,
+    date,
+    timeZone: systemRules.timeZone,
+  });
+
+  const nonTeachingRule = findNonTeachingRuleForDate(
+    date,
+    systemRules.nonTeachingDays,
+    systemRules.timeZone,
+  );
+
+  if (nonTeachingRule) {
+    const reason = nonTeachingRule.description?.trim();
+    return {
+      status: "error",
+      message:
+        reason && reason.length > 0
+          ? `O dia selecionado está marcado como não letivo (${reason}). Escolha outra data inicial.`
+          : "O dia selecionado está marcado como não letivo. Escolha outra data inicial.",
+    };
+  }
+
+  const schedule = buildDailySchedule({
+    date,
+    systemRules,
+    reservations: dayReservations,
+    now: new Date(),
+    nonTeachingRule,
+  });
+
+  const slotMap = new Map<string, ReservationSlot>();
+  schedule.periods.forEach((period) => {
+    period.slots.forEach((slot) => {
+      slotMap.set(slot.id, slot);
+    });
+  });
+
+  const resolvedSlots = uniqueSlots.map((slotId) => slotMap.get(slotId));
+
+  if (resolvedSlots.some((slot) => !slot)) {
+    return {
+      status: "error",
+      message: "Um ou mais horários selecionados não estão mais disponíveis.",
+    };
+  }
+
+  if (resolvedSlots.some((slot) => slot!.isOccupied)) {
+    return {
+      status: "error",
+      message:
+        "Um dos horários selecionados ficou indisponível. Atualize a agenda e tente novamente.",
+    };
+  }
+
+  if (resolvedSlots.some((slot) => slot!.isPast)) {
+    return {
+      status: "error",
+      message: "Não é possível reservar horários que já passaram.",
+    };
+  }
+
+  const firstSlot = resolvedSlots[0]!;
+  const lastSlot = resolvedSlots[resolvedSlots.length - 1]!;
+
+  const intermediateSlots = schedule.periods
+    .flatMap((period) => period.slots)
+    .filter((slot) => slot.startTime >= firstSlot.startTime && slot.endTime <= lastSlot.endTime);
+
+  const missingIntermediate = intermediateSlots.filter((slot) => !uniqueSlots.includes(slot.id));
+
+  if (missingIntermediate.length > 0) {
+    return {
+      status: "error",
+      message: "Selecione todos os horários intermediários entre o início e o fim da reserva.",
+    };
+  }
+
+  const reservationStart = new Date(firstSlot.startTime);
+  const reservationEnd = new Date(lastSlot.endTime);
+  const recurrenceWeekDay = getWeekDayInTimeZone(date, systemRules.timeZone);
+  const occurrences = Math.min(Math.max(academicPeriod.durationWeeks, 1), MAX_OCCURRENCES);
+  const dayDuration = 7 * 24 * 60 * 60_000;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      let recurrenceId: string | null = null;
+
+      if (occurrences > 1) {
+        const recurrence = await tx.reservationRecurrence.create({
+          data: {
+            laboratoryId,
+            createdById: teacher.id,
+            frequency: "WEEKLY",
+            interval: 1,
+            weekDay: recurrenceWeekDay,
+            startDate: reservationStart,
+            endDate: new Date(reservationEnd.getTime() + (occurrences - 1) * dayDuration),
+            subject,
+          },
+          select: { id: true },
+        });
+
+        recurrenceId = recurrence.id;
+      }
+
+      for (let index = 0; index < occurrences; index += 1) {
+        const offset = index * dayDuration;
+        const occurrenceStart = new Date(reservationStart.getTime() + offset);
+        const occurrenceEnd = new Date(reservationEnd.getTime() + offset);
+        const occurrenceIso = getIsoDateInTimeZone(occurrenceStart, systemRules.timeZone);
+
+        const occurrenceNonTeaching = findNonTeachingRuleForDate(
+          occurrenceIso,
+          systemRules.nonTeachingDays,
+          systemRules.timeZone,
+        );
+
+        if (occurrenceNonTeaching) {
+          throw new NonTeachingDayError(occurrenceStart, occurrenceNonTeaching.description);
+        }
+
+        const hasConflict = await tx.reservation.findFirst({
+          where: {
+            laboratoryId,
+            status: { not: ReservationStatus.CANCELLED },
+            startTime: { lt: occurrenceEnd },
+            endTime: { gt: occurrenceStart },
+          },
+          select: { id: true },
+        });
+
+        if (hasConflict) {
+          throw new ReservationConflictError(occurrenceStart);
+        }
+
+        await tx.reservation.create({
+          data: {
+            laboratoryId,
+            createdById: teacher.id,
+            startTime: occurrenceStart,
+            endTime: occurrenceEnd,
+            status: ReservationStatus.CONFIRMED,
+            recurrenceId: recurrenceId ?? undefined,
+            subject,
+          },
+        });
+      }
+    });
+  } catch (error) {
+    if (error instanceof ReservationConflictError) {
+      const formatted = new Intl.DateTimeFormat("pt-BR", {
+        dateStyle: "short",
+        timeStyle: "short",
+      }).format(error.date);
+
+      return {
+        status: "error",
+        message: `Já existe uma reserva confirmada para ${formatted}. Ajuste a seleção de horários.`,
+      };
+    }
+
+    if (error instanceof NonTeachingDayError) {
+      const formatted = new Intl.DateTimeFormat("pt-BR", {
+        dateStyle: "long",
+      }).format(error.date);
+
+      return {
+        status: "error",
+        message: error.reason
+          ? `${formatted} está marcado como não letivo (${error.reason}). Ajuste a recorrência.`
+          : `${formatted} está marcado como não letivo. Ajuste a recorrência.`,
+      };
+    }
+
+    console.error("[scheduling] Failed to assign class period reservation", error);
+    return {
+      status: "error",
+      message: "Não foi possível completar o agendamento do período letivo. Tente novamente mais tarde.",
+    };
+  }
+
+  revalidatePath("/dashboard/scheduling");
+  revalidatePath("/dashboard/scheduling/agenda");
+  revalidatePath("/dashboard/scheduling/history");
+  revalidatePath("/dashboard/scheduling/overview");
+
+  return {
+    status: "success",
+    message: `Reservas cadastradas para ${teacher.name} ao longo de ${occurrences} semana${occurrences > 1 ? "s" : ""}.`,
+  };
+}
+
+function resolveAcademicPeriodConfig(systemRules: SerializableSystemRules): {
+  label: string;
+  durationWeeks: number;
+  description?: string;
+} | null {
+  const { academicPeriod } = systemRules;
+
+  if (!academicPeriod?.durationWeeks || academicPeriod.durationWeeks <= 0) {
+    return null;
+  }
+
+  return {
+    label: academicPeriod.label ?? "Período letivo",
+    durationWeeks: academicPeriod.durationWeeks,
+    description: academicPeriod.description ?? undefined,
+  };
 }
 
 class ReservationConflictError extends Error {

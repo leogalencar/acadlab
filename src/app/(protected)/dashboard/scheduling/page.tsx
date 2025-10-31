@@ -1,18 +1,21 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
+import { Role } from "@prisma/client";
+
 import { auth } from "@/auth";
 import { SchedulingBoard } from "@/features/scheduling/components/scheduling-board";
 import {
   getActiveLaboratoryOptions,
   getSchedulingBoardData,
+  getProfessorOptions,
   normalizeDateParam,
 } from "@/features/scheduling/server/queries";
 import type { SearchParamsLike } from "@/features/shared/search-params";
 import { resolveSearchParams } from "@/features/shared/search-params";
 
 export const metadata: Metadata = {
-  title: "Agenda de laboratórios • AcadLab",
+  title: "Agenda de laboratórios",
 };
 
 type SchedulingSearchParams = {
@@ -61,6 +64,11 @@ export default async function SchedulingPage({
     now,
   });
 
+  let teacherOptions: Awaited<ReturnType<typeof getProfessorOptions>> = [];
+  if (session.user.role === Role.ADMIN || session.user.role === Role.TECHNICIAN) {
+    teacherOptions = await getProfessorOptions();
+  }
+
   return (
     <SchedulingBoard
       laboratories={laboratories}
@@ -70,6 +78,8 @@ export default async function SchedulingPage({
       actorRole={session.user.role}
       timeZone={snapshot.timeZone}
       nonTeachingRules={snapshot.nonTeachingRules}
+      teacherOptions={teacherOptions}
+      classPeriod={snapshot.classPeriod}
     />
   );
 }

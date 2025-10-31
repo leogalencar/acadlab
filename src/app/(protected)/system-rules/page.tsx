@@ -7,7 +7,7 @@ import { SystemRulesForm } from "@/features/system-rules/components/system-rules
 import { getSystemRules } from "@/features/system-rules/server/queries";
 
 export const metadata: Metadata = {
-  title: "Regras do sistema • AcadLab",
+  title: "Regras do sistema",
 };
 
 export default async function SystemRulesPage() {
@@ -22,6 +22,7 @@ export default async function SystemRulesPage() {
   }
 
   const rules = await getSystemRules();
+  const brandName = rules.branding.institutionName;
   const formKey =
     rules.updatedAt ?? `${rules.primaryColor}-${rules.secondaryColor}-${rules.accentColor}`;
 
@@ -32,8 +33,9 @@ export default async function SystemRulesPage() {
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Regras do sistema</h1>
           <p className="text-muted-foreground">
-            Ajuste a identidade visual e os horários institucionais para alinhar o AcadLab às regras da instituição.
+            Ajuste a identidade visual e os horários institucionais para alinhar o {brandName} às diretrizes da sua instituição.
           </p>
+          <p className="text-xs text-muted-foreground">Baseado na plataforma AcadLab.</p>
         </div>
       </header>
       <SystemRulesForm key={formKey} rules={rules} />

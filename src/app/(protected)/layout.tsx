@@ -6,12 +6,17 @@ import { ProtectedShell } from "@/features/dashboard/components/protected-shell"
 import { getSystemRules } from "@/features/system-rules/server/queries";
 import { prisma } from "@/lib/prisma";
 
-export const metadata: Metadata = {
-  title: {
-    default: "AcadLab",
-    template: "%s • AcadLab",
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const rules = await getSystemRules();
+  const brandName = rules.branding.institutionName;
+
+  return {
+    title: {
+      default: brandName,
+      template: `%s • ${brandName}`,
+    },
+  };
+}
 
 export default async function ProtectedLayout({
   children,

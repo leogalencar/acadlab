@@ -14,6 +14,7 @@ export interface SerializableReservationSummary {
   startTime: string;
   endTime: string;
   status: ReservationStatus;
+  subject?: string | null;
   createdBy: {
     id: string;
     name: string;
@@ -66,6 +67,50 @@ export interface SchedulingBoardData {
   actorRole: Role;
   timeZone: string;
   nonTeachingRules: NonTeachingDayRule[];
+  classPeriod?: AcademicPeriodSummary | null;
+}
+
+export interface SerializableUserOption {
+  id: string;
+  name: string;
+}
+
+export interface OverviewRankingEntry {
+  id: string;
+  name: string;
+  reservationsCount: number;
+}
+
+export interface OverviewReservation {
+  id: string;
+  laboratoryName: string;
+  startTime: string;
+  endTime: string;
+  status: ReservationStatus;
+  createdByName: string;
+  subject?: string | null;
+}
+
+export interface AcademicPeriodSummary {
+  label: string;
+  durationWeeks: number;
+  description?: string;
+}
+
+export interface SchedulingOverviewData {
+  totals: {
+    activeNow: number;
+    reservationsThisMonth: number;
+    cancelledThisMonth: number;
+    pendingApproval: number;
+  };
+  upcoming: OverviewReservation[];
+  topLaboratories: OverviewRankingEntry[];
+  topRequesters: OverviewRankingEntry[];
+  weeklyUsage: Array<{ date: string; reservationsCount: number }>;
+  classPeriod?: AcademicPeriodSummary | null;
+  timeZone: string;
+  generatedAt: string;
 }
 
 export type ReservationActionState = {

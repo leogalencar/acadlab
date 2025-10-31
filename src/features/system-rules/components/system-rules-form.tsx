@@ -130,6 +130,12 @@ interface BrandingState {
   logoUrl: string | null;
 }
 
+interface AcademicPeriodFormState {
+  label: string;
+  durationWeeks: string;
+  description: string;
+}
+
 export function SystemRulesForm({ rules }: SystemRulesFormProps) {
   const [state, formAction] = useActionState(updateSystemRulesAction, FORM_INITIAL_STATE);
 
@@ -150,6 +156,9 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
   const [branding, setBranding] = useState<BrandingState>(() => createBrandingState(rules));
   const [logoPreview, setLogoPreview] = useState<string | null>(rules.branding.logoUrl ?? null);
   const [logoAction, setLogoAction] = useState<"keep" | "remove" | "replace">("keep");
+  const [academicPeriod, setAcademicPeriod] = useState<AcademicPeriodFormState>(() =>
+    createAcademicPeriodFormState(rules),
+  );
 
   const paletteBaseRef = useRef<Record<string, string> | null>(null);
   const logoObjectUrlRef = useRef<string | null>(null);
@@ -165,6 +174,7 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
     setBranding(createBrandingState(rules));
     setLogoPreview(rules.branding.logoUrl ?? null);
     setLogoAction("keep");
+    setAcademicPeriod(createAcademicPeriodFormState(rules));
     if (logoInputRef.current) {
       logoInputRef.current.value = "";
     }
@@ -462,6 +472,14 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
     setNonTeachingDays((previous) => previous.filter((entry) => entry.id !== id));
   };
 
+  const handleRestoreAcademicPeriod = () => {
+    setAcademicPeriod({
+      label: DEFAULT_SYSTEM_RULES.schedule.academicPeriod.label,
+      durationWeeks: String(DEFAULT_SYSTEM_RULES.schedule.academicPeriod.durationWeeks),
+      description: DEFAULT_SYSTEM_RULES.schedule.academicPeriod.description ?? "",
+    });
+  };
+
   const handleRestoreNonTeachingDays = () => {
     setNonTeachingDays(createDefaultNonTeachingDaysState());
   };
@@ -528,6 +546,11 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
     setBranding(defaultBranding);
     setLogoPreview(defaultBranding.logoUrl);
     setLogoAction("keep");
+    setAcademicPeriod({
+      label: DEFAULT_SYSTEM_RULES.schedule.academicPeriod.label,
+      durationWeeks: String(DEFAULT_SYSTEM_RULES.schedule.academicPeriod.durationWeeks),
+      description: DEFAULT_SYSTEM_RULES.schedule.academicPeriod.description ?? "",
+    });
     if (logoInputRef.current) {
       logoInputRef.current.value = "";
     }
@@ -737,12 +760,17 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
           <div className="space-y-1">
             <CardTitle className="text-xl">Configurações gerais do calendário</CardTitle>
             <CardDescription>
-              Defina o fuso horário padrão e cadastre dias não letivos para evitar agendamentos.
+              Defina o fuso horário padrão, o período letivo da instituição e cadastre dias não letivos.
             </CardDescription>
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={handleRestoreNonTeachingDays}>
-            Restaurar dias padrão
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={handleRestoreAcademicPeriod}>
+              Restaurar período letivo
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={handleRestoreNonTeachingDays}>
+              Restaurar dias padrão
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-2">
@@ -762,6 +790,64 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
             </select>
             <HelperText>
               Os horários exibidos no sistema seguirão este fuso horário.
+            </HelperText>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+            <div className="space-y-2">
+              <Label htmlFor="classPeriodLabel">Nome do período letivo</Label>
+              <Input
+                id="classPeriodLabel"
+                name="classPeriodLabel"
+                value={academicPeriod.label}
+                onChange={(event) =>
+                  setAcademicPeriod((previous) => ({
+                    ...previous,
+                    label: event.currentTarget.value,
+                  }))
+                }
+                placeholder="Ex.: Semestre letivo"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="classPeriodDurationWeeks">Duração (semanas)</Label>
+              <Input
+                id="classPeriodDurationWeeks"
+                name="classPeriodDurationWeeks"
+                type="number"
+                min={1}
+                max={52}
+                value={academicPeriod.durationWeeks}
+                onChange={(event) =>
+                  setAcademicPeriod((previous) => ({
+                    ...previous,
+                    durationWeeks: event.currentTarget.value,
+                  }))
+                }
+                placeholder="Ex.: 20"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="classPeriodDescription">Descrição do período</Label>
+            <textarea
+              id="classPeriodDescription"
+              name="classPeriodDescription"
+              value={academicPeriod.description}
+              onChange={(event) =>
+                setAcademicPeriod((previous) => ({
+                  ...previous,
+                  description: event.currentTarget.value,
+                }))
+              }
+              className="min-h-[72px] w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="Informações adicionais sobre este período (opcional)."
+            />
+            <HelperText>
+              Informe o período acadêmico padrão para automatizar agendamentos recorrentes.
             </HelperText>
           </div>
 
@@ -1373,6 +1459,14 @@ function createBrandingState(rules: SerializableSystemRules): BrandingState {
   return {
     institutionName: rules.branding.institutionName,
     logoUrl: rules.branding.logoUrl,
+  };
+}
+
+function createAcademicPeriodFormState(rules: SerializableSystemRules): AcademicPeriodFormState {
+  return {
+    label: rules.academicPeriod.label,
+    durationWeeks: String(rules.academicPeriod.durationWeeks),
+    description: rules.academicPeriod.description ?? "",
   };
 }
 
