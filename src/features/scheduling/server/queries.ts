@@ -2,7 +2,12 @@ import { ReservationStatus, Role } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { getSystemRules } from "@/features/system-rules/server/queries";
-import { buildDailySchedule, findNonTeachingRuleForDate } from "@/features/scheduling/utils";
+import {
+  buildDailySchedule,
+  findNonTeachingRuleForDate,
+  getEndOfDayInTimeZone,
+  getStartOfDayInTimeZone,
+} from "@/features/scheduling/utils";
 import type {
   AgendaReservation,
   DailySchedule,
@@ -29,12 +34,18 @@ export async function getSchedulingBoardData({
   date,
   now,
 }: GetSchedulingBoardOptions): Promise<SchedulingBoardSnapshot> {
-  const [systemRules, reservations] = await Promise.all([
-    getSystemRules(),
-    getReservationsForDay({ laboratoryId, date }),
-  ]);
+  const systemRules = await getSystemRules();
+  const reservations = await getReservationsForDay({
+    laboratoryId,
+    date,
+    timeZone: systemRules.timeZone,
+  });
 
-  const nonTeachingRule = findNonTeachingRuleForDate(date, systemRules.nonTeachingDays);
+  const nonTeachingRule = findNonTeachingRuleForDate(
+    date,
+    systemRules.nonTeachingDays,
+    systemRules.timeZone,
+  );
 
   const schedule = buildDailySchedule({
     date,
@@ -70,14 +81,16 @@ export async function getActiveLaboratoryOptions(): Promise<SerializableLaborato
 interface GetReservationsForDayOptions {
   laboratoryId: string;
   date: string;
+  timeZone: string;
 }
 
 export async function getReservationsForDay({
   laboratoryId,
   date,
+  timeZone,
 }: GetReservationsForDayOptions): Promise<SerializableReservationSummary[]> {
-  const startOfDay = new Date(`${date}T00:00:00.000Z`);
-  const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60_000);
+  const startOfDay = getStartOfDayInTimeZone(date, timeZone);
+  const endOfDay = getEndOfDayInTimeZone(date, timeZone);
 
   const reservations = await prisma.reservation.findMany({
     where: {

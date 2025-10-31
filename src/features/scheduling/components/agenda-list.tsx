@@ -6,7 +6,11 @@ import { CalendarDays, Clock, Info, User } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DatePickerCalendar, type CalendarDayState } from "@/features/scheduling/components/date-picker-calendar";
-import { findNonTeachingRuleForDate } from "@/features/scheduling/utils";
+import {
+  findNonTeachingRuleForDate,
+  formatIsoDateInTimeZone,
+  getIsoDateInTimeZone,
+} from "@/features/scheduling/utils";
 import type { AgendaReservation } from "@/features/scheduling/types";
 import type { NonTeachingDayRule } from "@/features/system-rules/types";
 
@@ -29,7 +33,7 @@ export function AgendaList({ reservations, actorRole, timeZone, nonTeachingRules
   const reservationsByDate = useMemo(() => {
     const map = new Map<string, AgendaReservation[]>();
     reservations.forEach((reservation) => {
-      const isoDate = formatDateInTimeZone(new Date(reservation.startTime), timeZone);
+      const isoDate = getIsoDateInTimeZone(new Date(reservation.startTime), timeZone);
       const group = map.get(isoDate) ?? [];
       group.push(reservation);
       map.set(isoDate, group);
@@ -42,7 +46,7 @@ export function AgendaList({ reservations, actorRole, timeZone, nonTeachingRules
     return map;
   }, [reservations, timeZone]);
 
-  const todayIso = useMemo(() => formatDateInTimeZone(new Date(), timeZone), [timeZone]);
+  const todayIso = useMemo(() => getIsoDateInTimeZone(new Date(), timeZone), [timeZone]);
 
   const initialDate = useMemo(() => {
     if (reservationsByDate.size === 0) {
@@ -65,17 +69,15 @@ export function AgendaList({ reservations, actorRole, timeZone, nonTeachingRules
 
   const selectedReservations = reservationsByDate.get(selectedDate) ?? [];
   const selectedNonTeachingRule = useMemo(
-    () => findNonTeachingRuleForDate(selectedDate, nonTeachingRules),
-    [selectedDate, nonTeachingRules],
+    () => findNonTeachingRuleForDate(selectedDate, nonTeachingRules, timeZone),
+    [selectedDate, nonTeachingRules, timeZone],
   );
   const selectedDateLabel = useMemo(() => {
-    const parsed = parseIsoDate(selectedDate);
-    return new Intl.DateTimeFormat("pt-BR", {
+    return formatIsoDateInTimeZone(selectedDate, timeZone, {
       weekday: "long",
       day: "numeric",
       month: "long",
-      timeZone,
-    }).format(parsed);
+    });
   }, [selectedDate, timeZone]);
 
   const timeFormatter = useMemo(
@@ -91,7 +93,7 @@ export function AgendaList({ reservations, actorRole, timeZone, nonTeachingRules
   const getDayState = useCallback(
     (isoDate: string): CalendarDayState | undefined => {
       const hasReservations = reservationsByDate.has(isoDate);
-      const rule = findNonTeachingRuleForDate(isoDate, nonTeachingRules);
+      const rule = findNonTeachingRuleForDate(isoDate, nonTeachingRules, timeZone);
 
       if (!hasReservations && !rule) {
         return undefined;
@@ -111,7 +113,7 @@ export function AgendaList({ reservations, actorRole, timeZone, nonTeachingRules
         hint: rule?.description?.trim()?.length ? `${rule.description} (não letivo)` : "Dia não letivo",
       } satisfies CalendarDayState;
     },
-    [reservationsByDate, nonTeachingRules],
+    [reservationsByDate, nonTeachingRules, timeZone],
   );
 
   return (
@@ -141,7 +143,12 @@ export function AgendaList({ reservations, actorRole, timeZone, nonTeachingRules
               <span className="font-medium text-foreground">Dia selecionado</span>
               <span className="text-xs capitalize text-muted-foreground">{selectedDateLabel}</span>
             </div>
-            <DatePickerCalendar selectedDate={selectedDate} onSelect={setSelectedDate} getDayState={getDayState} />
+            <DatePickerCalendar
+              selectedDate={selectedDate}
+              onSelect={setSelectedDate}
+              getDayState={getDayState}
+              timeZone={timeZone}
+            />
           </aside>
 
           <section className="space-y-4">
@@ -218,27 +225,4 @@ export function AgendaList({ reservations, actorRole, timeZone, nonTeachingRules
       )}
     </div>
   );
-}
-
-function formatDateInTimeZone(date: Date, timeZone: string): string {
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-
-  const parts = formatter.formatToParts(date);
-  const year = parts.find((part) => part.type === "year")?.value ?? "0000";
-  const month = parts.find((part) => part.type === "month")?.value ?? "01";
-  const day = parts.find((part) => part.type === "day")?.value ?? "01";
-  return `${year}-${month}-${day}`;
-}
-
-function parseIsoDate(value: string): Date {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return new Date(`${value}T00:00:00.000Z`);
-  }
-
-  return new Date();
 }

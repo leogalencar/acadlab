@@ -7,7 +7,12 @@ import { ReservationStatus, Role } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import type { ReservationSlot } from "@/features/scheduling/types";
-import { buildDailySchedule, findNonTeachingRuleForDate } from "@/features/scheduling/utils";
+import {
+  buildDailySchedule,
+  findNonTeachingRuleForDate,
+  getIsoDateInTimeZone,
+  getWeekDayInTimeZone,
+} from "@/features/scheduling/utils";
 import { getReservationsForDay } from "@/features/scheduling/server/queries";
 import type { ActionState } from "@/features/shared/types";
 import { getSystemRules } from "@/features/system-rules/server/queries";
@@ -108,12 +113,18 @@ export async function createReservationAction(
     };
   }
 
-  const [systemRules, dayReservations] = await Promise.all([
-    getSystemRules(),
-    getReservationsForDay({ laboratoryId, date }),
-  ]);
+  const systemRules = await getSystemRules();
+  const dayReservations = await getReservationsForDay({
+    laboratoryId,
+    date,
+    timeZone: systemRules.timeZone,
+  });
 
-  const nonTeachingRule = findNonTeachingRuleForDate(date, systemRules.nonTeachingDays);
+  const nonTeachingRule = findNonTeachingRuleForDate(
+    date,
+    systemRules.nonTeachingDays,
+    systemRules.timeZone,
+  );
 
   if (nonTeachingRule) {
     const reason = nonTeachingRule.description?.trim();
@@ -203,7 +214,10 @@ export async function createReservationAction(
             createdById: session.user.id,
             frequency: "WEEKLY",
             interval: 1,
-            weekDay: reservationStart.getUTCDay(),
+            weekDay: getWeekDayInTimeZone(
+              getIsoDateInTimeZone(reservationStart, systemRules.timeZone),
+              systemRules.timeZone,
+            ),
             startDate: reservationStart,
             endDate: new Date(
               reservationEnd.getTime() + (occurrences - 1) * 7 * 24 * 60 * 60_000,
@@ -220,10 +234,11 @@ export async function createReservationAction(
         const occurrenceStart = new Date(reservationStart.getTime() + offset);
         const occurrenceEnd = new Date(reservationEnd.getTime() + offset);
 
-        const occurrenceDateIso = occurrenceStart.toISOString().slice(0, 10);
+        const occurrenceDateIso = getIsoDateInTimeZone(occurrenceStart, systemRules.timeZone);
         const occurrenceNonTeachingRule = findNonTeachingRuleForDate(
           occurrenceDateIso,
           systemRules.nonTeachingDays,
+          systemRules.timeZone,
         );
 
         if (occurrenceNonTeachingRule) {

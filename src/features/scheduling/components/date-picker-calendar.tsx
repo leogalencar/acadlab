@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { getIsoDateInTimeZone } from "@/features/scheduling/utils";
 import { cn } from "@/lib/utils";
 
 type CalendarHighlightVariant = "reserved" | "nonTeaching";
@@ -18,11 +19,17 @@ interface DatePickerCalendarProps {
   selectedDate: string;
   onSelect: (date: string) => void;
   getDayState?: (isoDate: string) => CalendarDayState | undefined;
+  timeZone: string;
 }
 
 const WEEKDAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
-export function DatePickerCalendar({ selectedDate, onSelect, getDayState }: DatePickerCalendarProps) {
+export function DatePickerCalendar({
+  selectedDate,
+  onSelect,
+  getDayState,
+  timeZone,
+}: DatePickerCalendarProps) {
   const initialMonth = useMemo(() => startOfMonth(parseIsoDate(selectedDate)), [selectedDate]);
   const [visibleMonth, setVisibleMonth] = useState(initialMonth);
 
@@ -32,11 +39,12 @@ export function DatePickerCalendar({ selectedDate, onSelect, getDayState }: Date
 
   const calendarDays = useMemo(() => buildCalendarDays(visibleMonth), [visibleMonth]);
   const selectedIso = normalizeDate(selectedDate);
-  const todayIso = normalizeDate(new Date().toISOString().slice(0, 10));
+  const todayIso = normalizeDate(getIsoDateInTimeZone(new Date(), timeZone));
 
   const monthLabel = new Intl.DateTimeFormat("pt-BR", {
     month: "long",
     year: "numeric",
+    timeZone: "UTC",
   }).format(visibleMonth);
 
   const handlePrevious = () => {

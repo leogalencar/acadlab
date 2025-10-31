@@ -28,7 +28,7 @@ import type {
   SerializableLaboratoryOption,
 } from "@/features/scheduling/types";
 import type { NonTeachingDayRule } from "@/features/system-rules/types";
-import { findNonTeachingRuleForDate } from "@/features/scheduling/utils";
+import { findNonTeachingRuleForDate, formatIsoDateInTimeZone } from "@/features/scheduling/utils";
 import { cn } from "@/lib/utils";
 
 interface SchedulingBoardProps {
@@ -118,7 +118,7 @@ export function SchedulingBoard({
 
   const getCalendarDayState = useCallback(
     (isoDate: string): CalendarDayState | undefined => {
-      const rule = findNonTeachingRuleForDate(isoDate, nonTeachingRules);
+      const rule = findNonTeachingRuleForDate(isoDate, nonTeachingRules, timeZone);
       if (!rule) {
         return undefined;
       }
@@ -132,7 +132,7 @@ export function SchedulingBoard({
             : "Dia não letivo",
       };
     },
-    [nonTeachingRules],
+    [nonTeachingRules, timeZone],
   );
 
   const handleLaboratoryChange = (event: ChangeEvent<HTMLSelectElement>) => {
@@ -169,13 +169,11 @@ export function SchedulingBoard({
   };
 
   const formattedDate = useMemo(() => {
-    const date = new Date(`${selectedDate}T00:00:00.000Z`);
-    return new Intl.DateTimeFormat("pt-BR", {
+    return formatIsoDateInTimeZone(selectedDate, timeZone, {
       weekday: "long",
       day: "numeric",
       month: "long",
-      timeZone,
-    }).format(date);
+    });
   }, [selectedDate, timeZone]);
 
   const canScheduleRecurrence = actorRole === Role.ADMIN || actorRole === Role.TECHNICIAN;
@@ -268,6 +266,7 @@ export function SchedulingBoard({
               selectedDate={selectedDate}
               onSelect={handleDateSelect}
               getDayState={getCalendarDayState}
+              timeZone={timeZone}
             />
           </div>
 

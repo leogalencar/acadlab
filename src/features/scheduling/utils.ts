@@ -20,6 +20,104 @@ interface BuildDailyScheduleOptions {
   nonTeachingRule?: NonTeachingDayRule | null;
 }
 
+const WEEKDAY_INDEX: Record<string, number> = {
+  sun: 0,
+  mon: 1,
+  tue: 2,
+  wed: 3,
+  thu: 4,
+  fri: 5,
+  sat: 6,
+};
+
+export function getIsoDateInTimeZone(date: Date, timeZone: string): string {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+
+  const parts = formatter.formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value ?? "0000";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
+
+  return `${year}-${month}-${day}`;
+}
+
+export function getStartOfDayInTimeZone(date: string, timeZone: string): Date {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error(`Invalid ISO date: ${date}`);
+  }
+
+  const [year, month, day] = date.split("-").map((value) => Number.parseInt(value, 10));
+  const utcMidnight = Date.UTC(year, month - 1, day, 0, 0, 0, 0);
+  const reference = new Date(utcMidnight);
+  const offset = getTimeZoneOffset(reference, timeZone);
+
+  return new Date(utcMidnight - offset);
+}
+
+export function getEndOfDayInTimeZone(date: string, timeZone: string): Date {
+  const start = getStartOfDayInTimeZone(date, timeZone);
+  return new Date(start.getTime() + 24 * 60 * 60_000);
+}
+
+export function formatIsoDateInTimeZone(
+  date: string,
+  timeZone: string,
+  options: Intl.DateTimeFormatOptions,
+): string {
+  const formatter = new Intl.DateTimeFormat("pt-BR", {
+    timeZone,
+    ...options,
+  });
+
+  return formatter.format(getStartOfDayInTimeZone(date, timeZone));
+}
+
+export function getWeekDayInTimeZone(date: string, timeZone: string): number {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    weekday: "short",
+  });
+
+  const weekdayPart = formatter
+    .formatToParts(getStartOfDayInTimeZone(date, timeZone))
+    .find((part) => part.type === "weekday")?.value;
+
+  if (!weekdayPart) {
+    return getStartOfDayInTimeZone(date, timeZone).getUTCDay();
+  }
+
+  const normalized = weekdayPart.slice(0, 3).toLowerCase();
+  return WEEKDAY_INDEX[normalized] ?? 0;
+}
+
+function getTimeZoneOffset(date: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+
+  const year = Number.parseInt(parts.find((part) => part.type === "year")?.value ?? "0", 10);
+  const month = Number.parseInt(parts.find((part) => part.type === "month")?.value ?? "1", 10) - 1;
+  const day = Number.parseInt(parts.find((part) => part.type === "day")?.value ?? "1", 10);
+  const hour = Number.parseInt(parts.find((part) => part.type === "hour")?.value ?? "0", 10);
+  const minute = Number.parseInt(parts.find((part) => part.type === "minute")?.value ?? "0", 10);
+  const second = Number.parseInt(parts.find((part) => part.type === "second")?.value ?? "0", 10);
+
+  const zonedTime = Date.UTC(year, month, day, hour, minute, second);
+  return zonedTime - date.getTime();
+}
+
 interface IntervalDefinition {
   start: number;
   durationMinutes: number;
@@ -47,7 +145,7 @@ export function buildDailySchedule({
   now,
   nonTeachingRule,
 }: BuildDailyScheduleOptions): DailySchedule {
-  const baseDate = buildStartOfDay(date);
+  const baseDate = buildStartOfDay(date, systemRules.timeZone);
   const baseTimestamp = baseDate.getTime();
   const normalizedReservations = reservations.map((reservation) => ({
     ...reservation,
@@ -104,13 +202,13 @@ export function buildDailySchedule({
 export function findNonTeachingRuleForDate(
   date: string,
   rules: NonTeachingDayRule[],
+  timeZone: string,
 ): NonTeachingDayRule | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return null;
   }
 
-  const target = new Date(`${date}T00:00:00.000Z`);
-  const weekDay = target.getUTCDay();
+  const weekDay = getWeekDayInTimeZone(date, timeZone);
   const monthDay = date.slice(5);
 
   for (const rule of rules) {
@@ -234,10 +332,6 @@ function findConflictingReservation(
   return null;
 }
 
-function buildStartOfDay(date: string): Date {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    throw new Error(`Invalid ISO date: ${date}`);
-  }
-
-  return new Date(`${date}T00:00:00.000Z`);
+function buildStartOfDay(date: string, timeZone: string): Date {
+  return getStartOfDayInTimeZone(date, timeZone);
 }
