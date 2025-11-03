@@ -80,6 +80,67 @@ const assignClassPeriodSchema = z.object({
     .max(120, "O nome da disciplina deve ter no máximo 120 caracteres."),
 });
 
+type SubjectColumnSupport = {
+  reservation: boolean;
+  recurrence: boolean;
+};
+
+let cachedSubjectColumnSupport: SubjectColumnSupport | null = null;
+let lastSubjectColumnInspection = 0;
+let warnedAboutMissingSubjectColumns = false;
+
+async function getSubjectColumnSupport(): Promise<SubjectColumnSupport> {
+  const now = Date.now();
+
+  if (cachedSubjectColumnSupport && now - lastSubjectColumnInspection < 5 * 60_000) {
+    return cachedSubjectColumnSupport;
+  }
+
+  try {
+    const rows = await prisma.$queryRaw<Array<{ tableName: string }>>`
+      SELECT LOWER(TABLE_NAME) AS tableName
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME IN ('Reservation', 'ReservationRecurrence')
+        AND COLUMN_NAME = 'subject'
+    `;
+
+    const foundTables = new Set(rows.map((row) => row.tableName));
+
+    cachedSubjectColumnSupport = {
+      reservation: foundTables.has("reservation"),
+      recurrence: foundTables.has("reservationrecurrence"),
+    };
+    lastSubjectColumnInspection = now;
+
+    if (
+      (!cachedSubjectColumnSupport.reservation || !cachedSubjectColumnSupport.recurrence) &&
+      !warnedAboutMissingSubjectColumns
+    ) {
+      console.warn(
+        "[scheduling] Subject column not available on all reservation tables. Skipping subject persistence until migrations run.",
+      );
+      warnedAboutMissingSubjectColumns = true;
+    }
+
+    return cachedSubjectColumnSupport;
+  } catch (error) {
+    console.warn("[scheduling] Failed to inspect subject column support", error);
+
+    cachedSubjectColumnSupport = { reservation: false, recurrence: false };
+    lastSubjectColumnInspection = now;
+
+    if (!warnedAboutMissingSubjectColumns) {
+      console.warn(
+        "[scheduling] Proceeding without subject columns due to inspection failure.",
+      );
+      warnedAboutMissingSubjectColumns = true;
+    }
+
+    return cachedSubjectColumnSupport;
+  }
+}
+
 export async function createReservationAction(
   _prev: ActionState,
   formData: FormData,
@@ -130,15 +191,6 @@ export async function createReservationAction(
     };
   }
 
-  const isSameDay = slots.every((slot) => slot.start.toISOString().startsWith(`${date}T`));
-
-  if (!isSameDay) {
-    return {
-      status: "error",
-      message: "Todos os horários devem pertencer ao mesmo dia.",
-    };
-  }
-
   const uniqueSlots = Array.from(new Set(slots.map((slot) => slot.id)));
 
   if (uniqueSlots.length !== slots.length) {
@@ -149,6 +201,19 @@ export async function createReservationAction(
   }
 
   const systemRules = await getSystemRules();
+
+  const slotsMatchSelectedDay = slots.every((slot) => {
+    const slotDate = getIsoDateInTimeZone(slot.start, systemRules.timeZone);
+    return slotDate === date;
+  });
+
+  if (!slotsMatchSelectedDay) {
+    return {
+      status: "error",
+      message: "Todos os horários devem pertencer ao mesmo dia.",
+    };
+  }
+
   const dayReservations = await getReservationsForDay({
     laboratoryId,
     date,
@@ -196,14 +261,20 @@ export async function createReservationAction(
     };
   }
 
-  if (resolvedSlots.some((slot) => slot!.isOccupied)) {
+  const resolvedSlotEntries = resolvedSlots.map((slot) => slot!);
+  const sortedResolvedSlots = [...resolvedSlotEntries].sort(
+    (left, right) =>
+      new Date(left.startTime).getTime() - new Date(right.startTime).getTime(),
+  );
+
+  if (resolvedSlotEntries.some((slot) => slot.isOccupied)) {
     return {
       status: "error",
       message: "Um dos horários selecionados ficou indisponível. Atualize a agenda e tente novamente.",
     };
   }
 
-  if (resolvedSlots.some((slot) => slot!.isPast)) {
+  if (resolvedSlotEntries.some((slot) => slot.isPast)) {
     return {
       status: "error",
       message: "Não é possível reservar horários que já passaram.",
@@ -211,8 +282,8 @@ export async function createReservationAction(
   }
 
   const selectionSet = new Set(uniqueSlots);
-  const firstSlot = resolvedSlots[0]!;
-  const lastSlot = resolvedSlots[resolvedSlots.length - 1]!;
+  const firstSlot = sortedResolvedSlots[0]!;
+  const lastSlot = sortedResolvedSlots[sortedResolvedSlots.length - 1]!;
 
   const intermediateSlots = schedule.periods
     .flatMap((period) => period.slots)
@@ -557,7 +628,13 @@ export async function assignClassPeriodReservationAction(
     };
   }
 
-  if (resolvedSlots.some((slot) => slot!.isOccupied)) {
+  const resolvedSlotEntries = resolvedSlots.map((slot) => slot!);
+  const sortedResolvedSlots = [...resolvedSlotEntries].sort(
+    (left, right) =>
+      new Date(left.startTime).getTime() - new Date(right.startTime).getTime(),
+  );
+
+  if (resolvedSlotEntries.some((slot) => slot.isOccupied)) {
     return {
       status: "error",
       message:
@@ -565,15 +642,15 @@ export async function assignClassPeriodReservationAction(
     };
   }
 
-  if (resolvedSlots.some((slot) => slot!.isPast)) {
+  if (resolvedSlotEntries.some((slot) => slot.isPast)) {
     return {
       status: "error",
       message: "Não é possível reservar horários que já passaram.",
     };
   }
 
-  const firstSlot = resolvedSlots[0]!;
-  const lastSlot = resolvedSlots[resolvedSlots.length - 1]!;
+  const firstSlot = sortedResolvedSlots[0]!;
+  const lastSlot = sortedResolvedSlots[sortedResolvedSlots.length - 1]!;
 
   const intermediateSlots = schedule.periods
     .flatMap((period) => period.slots)
@@ -588,6 +665,7 @@ export async function assignClassPeriodReservationAction(
     };
   }
 
+  const subjectColumnSupport = await getSubjectColumnSupport();
   const reservationStart = new Date(firstSlot.startTime);
   const reservationEnd = new Date(lastSlot.endTime);
   const recurrenceWeekDay = getWeekDayInTimeZone(date, systemRules.timeZone);
@@ -608,7 +686,7 @@ export async function assignClassPeriodReservationAction(
             weekDay: recurrenceWeekDay,
             startDate: reservationStart,
             endDate: new Date(reservationEnd.getTime() + (occurrences - 1) * dayDuration),
-            subject,
+            ...(subjectColumnSupport.recurrence ? { subject } : {}),
           },
           select: { id: true },
         });
@@ -654,7 +732,7 @@ export async function assignClassPeriodReservationAction(
             endTime: occurrenceEnd,
             status: ReservationStatus.CONFIRMED,
             recurrenceId: recurrenceId ?? undefined,
-            subject,
+            ...(subjectColumnSupport.reservation ? { subject } : {}),
           },
         });
       }

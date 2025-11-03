@@ -12,7 +12,7 @@ interface SchedulingOverviewProps {
 }
 
 const statusBadgeClasses: Record<ReservationStatus, string> = {
-  [ReservationStatus.CONFIRMED]: "bg-success/10 text-success-foreground",
+  [ReservationStatus.CONFIRMED]: "bg-success/30 text-success-foreground",
   [ReservationStatus.PENDING]: "bg-warning/20 text-warning-foreground",
   [ReservationStatus.CANCELLED]: "bg-destructive/10 text-destructive",
 };

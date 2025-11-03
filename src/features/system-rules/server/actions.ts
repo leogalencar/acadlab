@@ -217,6 +217,58 @@ const periodSchema = z
       }
     });
 
+    if (orderedIntervals.length > 0) {
+      let timelineCursor = period.firstClassTime;
+      let intervalCursor = 0;
+
+      for (let classIndex = 0; classIndex < period.classesCount; classIndex += 1) {
+        const classStart = timelineCursor;
+        const classEnd = classStart + period.classDurationMinutes;
+
+        while (intervalCursor < orderedIntervals.length) {
+          const intervalEntry = orderedIntervals[intervalCursor]!;
+
+          if (intervalEntry.interval.start <= classStart) {
+            intervalCursor += 1;
+            continue;
+          }
+
+          if (intervalEntry.interval.start < classEnd) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["intervals", intervalEntry.index, "start"],
+              message: "Os intervalos não podem começar durante uma aula.",
+            });
+            intervalCursor += 1;
+            continue;
+          }
+
+          break;
+        }
+
+        timelineCursor = classEnd;
+
+        while (
+          intervalCursor < orderedIntervals.length &&
+          orderedIntervals[intervalCursor]!.interval.start === timelineCursor
+        ) {
+          const intervalEntry = orderedIntervals[intervalCursor]!;
+          timelineCursor += intervalEntry.interval.durationMinutes;
+          intervalCursor += 1;
+        }
+      }
+
+      while (intervalCursor < orderedIntervals.length) {
+        const intervalEntry = orderedIntervals[intervalCursor]!;
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["intervals", intervalEntry.index, "start"],
+          message: "Os intervalos devem ocorrer entre as aulas configuradas.",
+        });
+        intervalCursor += 1;
+      }
+    }
+
     if (periodEnd > MINUTES_PER_DAY) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

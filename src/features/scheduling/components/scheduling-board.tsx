@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
   type ChangeEvent,
@@ -16,6 +17,14 @@ import { CalendarDays, History, Loader2, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { idleActionState } from "@/features/shared/types";
 import {
   DatePickerCalendar,
@@ -63,10 +72,12 @@ export function SchedulingBoard({
   const searchParams = useSearchParams();
   const [isNavigating, startTransition] = useTransition();
   const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set());
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [formState, formAction, isSubmitting] = useActionState(
     createReservationAction,
     idleActionState,
   );
+  const formRef = useRef<HTMLFormElement | null>(null);
 
   const timeFormatter = useMemo(
     () =>
@@ -106,6 +117,7 @@ export function SchedulingBoard({
   useEffect(() => {
     if (formState.status === "success") {
       setSelectedSlots(new Set());
+      setIsConfirmDialogOpen(false);
     }
   }, [formState.status]);
 
@@ -209,6 +221,45 @@ export function SchedulingBoard({
       selectedSlotIds.length > 1 ? "s" : ""
     } (${startLabel} - ${endLabel})`;
   }, [selectedSlotIds, schedule, timeFormatter]);
+
+  const selectedSlotDetails = useMemo(() => {
+    return selectedSlotIds
+      .map((slotId) => findSlot(schedule, slotId))
+      .filter((slot): slot is ReservationSlot => Boolean(slot));
+  }, [schedule, selectedSlotIds]);
+
+  const selectedLaboratoryName = useMemo(() => {
+    return laboratories.find((lab) => lab.id === selectedLaboratoryId)?.name ?? "";
+  }, [laboratories, selectedLaboratoryId]);
+
+  useEffect(() => {
+    if (selectedSlotIds.length === 0) {
+      setIsConfirmDialogOpen(false);
+    }
+  }, [selectedSlotIds.length]);
+
+  const openConfirmationDialog = useCallback(() => {
+    if (selectedSlotIds.length === 0 || schedule.isNonTeachingDay || selectedSlotDetails.length === 0) {
+      return;
+    }
+    setIsConfirmDialogOpen(true);
+  }, [schedule.isNonTeachingDay, selectedSlotDetails.length, selectedSlotIds.length]);
+
+  const handleConfirmSubmission = useCallback(() => {
+    if (formRef.current) {
+      formRef.current.requestSubmit();
+    }
+  }, []);
+
+  const handleDialogOpenChange = useCallback(
+    (state: boolean) => {
+      if (isSubmitting) {
+        return;
+      }
+      setIsConfirmDialogOpen(state);
+    },
+    [isSubmitting],
+  );
 
   return (
     <div className="space-y-8">
@@ -339,7 +390,7 @@ export function SchedulingBoard({
                 </div>
               ))}
 
-              <form action={formAction} className="space-y-4">
+              <form ref={formRef} action={formAction} className="space-y-4">
                 <input type="hidden" name="laboratoryId" value={selectedLaboratoryId} />
                 <input type="hidden" name="date" value={selectedDate} />
                 {selectedSlotIds.map((slotId) => (
@@ -391,7 +442,8 @@ export function SchedulingBoard({
                       />
                     ) : null}
                     <Button
-                      type="submit"
+                      type="button"
+                      onClick={openConfirmationDialog}
                       disabled={
                         selectedSlotIds.length === 0 ||
                         isSubmitting ||
@@ -417,7 +469,7 @@ export function SchedulingBoard({
                     className={cn(
                       "rounded-md border px-3 py-2 text-sm",
                       formState.status === "success"
-                        ? "border-success/60 bg-success/10 text-success-foreground"
+                        ? "border-success/60 bg-success/25 text-success-foreground"
                         : "border-destructive/50 bg-destructive/10 text-destructive",
                     )}
                   >
@@ -425,6 +477,72 @@ export function SchedulingBoard({
                   </div>
                 ) : null}
               </form>
+
+              <Dialog open={isConfirmDialogOpen} onOpenChange={handleDialogOpenChange}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Confirmar reserva selecionada</DialogTitle>
+                    <DialogDescription>
+                      Revise os horários antes de registrar a reserva para {formattedDate}.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-3">
+                    <div className="rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                      <span className="font-medium text-foreground">{selectedLaboratoryName}</span>
+                      <span className="mx-2 text-muted-foreground/60">•</span>
+                      <span className="capitalize">{formattedDate}</span>
+                    </div>
+                    {selectedSlotDetails.length > 0 ? (
+                      <ul className="space-y-2 text-sm">
+                        {selectedSlotDetails.map((slot) => {
+                          const startLabel = timeFormatter.format(new Date(slot.startTime));
+                          const endLabel = timeFormatter.format(new Date(slot.endTime));
+
+                          return (
+                            <li
+                              key={slot.id}
+                              className="flex items-center justify-between rounded-md border border-border/60 bg-background/80 px-3 py-2"
+                            >
+                              <div className="flex flex-col text-left">
+                                <span className="text-foreground">
+                                  Aula {slot.classIndex} • {startLabel} - {endLabel}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  Período: {resolvePeriodLabel(schedule, slot.periodId)}
+                                </span>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : (
+                      <p className="rounded-md border border-dashed border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                        Nenhum horário selecionado.
+                      </p>
+                    )}
+                  </div>
+                  <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsConfirmDialogOpen(false)}
+                      disabled={isSubmitting}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button type="button" onClick={handleConfirmSubmission} disabled={isSubmitting}>
+                      {isSubmitting ? (
+                        <span className="flex items-center gap-2">
+                          <Loader2 className="size-4 animate-spin" aria-hidden />
+                          Enviando…
+                        </span>
+                      ) : (
+                        "Confirmar reserva"
+                      )}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </CardContent>
           </Card>
         </section>
@@ -507,6 +625,10 @@ function getStatusLabel(slot: ReservationSlot, isDayDisabled: boolean): string {
   }
 
   return "Horário livre para reserva.";
+}
+
+function resolvePeriodLabel(schedule: DailySchedule, periodId: ReservationSlot["periodId"]): string {
+  return schedule.periods.find((period) => period.id === periodId)?.label ?? periodId;
 }
 
 function findSlot(schedule: DailySchedule, slotId: string): ReservationSlot | null {

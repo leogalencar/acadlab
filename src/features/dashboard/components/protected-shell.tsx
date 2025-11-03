@@ -75,10 +75,10 @@ export function ProtectedShell({ userName, role, branding, children }: Protected
   }, [activeMatch]);
 
   return (
-    <div className="flex min-h-screen bg-muted/40">
-      <aside className="hidden w-72 border-r border-border/60 bg-sidebar px-4 py-6 text-sidebar-foreground shadow-sm backdrop-blur md:flex md:flex-col">
+    <div className="flex min-h-screen bg-muted/30">
+      <aside className="hidden border-r border-sidebar-border/70 bg-sidebar/95 px-4 py-6 text-sidebar-foreground shadow-sm backdrop-blur md:flex md:w-72 md:flex-col md:gap-6 md:overflow-y-auto md:sticky md:top-0 md:h-screen">
         <BrandingArea branding={branding} />
-        <nav className="flex flex-1 flex-col gap-1">
+        <nav className="flex flex-1 flex-col gap-1 pb-8">
           {navItems.map((item) => {
             const hasChildren = Boolean(item.children?.length);
             const isParentActive = activeMatch?.parentId === item.id;
@@ -111,10 +111,10 @@ export function ProtectedShell({ userName, role, branding, children }: Protected
             );
           })}
         </nav>
-        <footer className="mt-8 rounded-lg border border-sidebar-border bg-sidebar/60 p-4 text-xs text-muted-foreground/80">
+        <footer className="mt-auto rounded-lg border border-sidebar-border/75 bg-sidebar/80 p-4 text-xs text-sidebar-foreground/75 shadow-sm">
           <p className="font-medium text-sidebar-foreground">Precisa de acesso?</p>
           <p>Contate um administrador para habilitar novos módulos no seu perfil.</p>
-          <p className="mt-2 text-[11px] text-muted-foreground">Baseado na plataforma AcadLab.</p>
+          <p className="mt-2 text-[11px] text-sidebar-foreground/60">Baseado na plataforma AcadLab.</p>
         </footer>
       </aside>
       <div className="flex flex-1 flex-col">
@@ -132,16 +132,16 @@ export function ProtectedShell({ userName, role, branding, children }: Protected
 
 function BrandingArea({ branding }: { branding: BrandingSettings }) {
   return (
-    <div className="mb-8 flex items-center gap-3 rounded-xl border border-sidebar-border bg-sidebar/50 p-3 shadow-sm">
+    <div className="flex items-center gap-3 rounded-xl border border-sidebar-border/70 bg-sidebar/80 p-3 shadow-sm">
       <Link href="/dashboard" className="flex items-center gap-3">
-        <div className="flex size-11 items-center justify-center overflow-hidden rounded-lg border border-sidebar-border bg-background shadow-sm">
+        <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-lg border border-sidebar-border/70 bg-background/90 shadow-sm">
           {branding.logoUrl ? (
             <Image
               src={branding.logoUrl}
               alt={`${branding.institutionName} logo`}
               width={44}
               height={44}
-              className="size-11 object-contain"
+              className="h-11 w-11 object-contain"
             />
           ) : (
             <span className="text-lg font-semibold tracking-tight text-sidebar-foreground">
@@ -149,9 +149,9 @@ function BrandingArea({ branding }: { branding: BrandingSettings }) {
             </span>
           )}
         </div>
-        <div>
+        <div className="space-y-0.5">
           <p className="text-sm font-semibold text-sidebar-foreground">{branding.institutionName}</p>
-          <p className="text-xs text-muted-foreground/80">Gestão integrada de laboratórios</p>
+          <p className="text-xs text-sidebar-foreground/65">Gestão integrada de laboratórios</p>
         </div>
       </Link>
     </div>
@@ -174,13 +174,13 @@ function SidebarLink({ item, isActive }: SidebarLinkProps) {
   if (isDisabled) {
     return (
       <span
-        className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground/70 transition-opacity"
+        className="group grid grid-cols-[2.75rem,1fr] items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-sidebar-foreground/60 opacity-70"
         aria-disabled
       >
-        <span className="flex size-9 items-center justify-center rounded-md border border-dashed border-sidebar-border bg-muted/40 text-muted-foreground/80">
-          <Lock className="size-4" aria-hidden />
+        <span className="flex h-9 w-9 items-center justify-center rounded-md border border-dashed border-sidebar-border/70 bg-sidebar/60 text-sidebar-foreground/60">
+          <Lock className="h-5 w-5" aria-hidden />
         </span>
-        <div className="flex flex-col">
+        <div className="flex flex-col gap-0.5 text-left">
           <span className="font-medium">{item.title}</span>
           <span className="text-xs">Em breve</span>
         </div>
@@ -192,25 +192,27 @@ function SidebarLink({ item, isActive }: SidebarLinkProps) {
     <Link
       href={item.href}
       className={cn(
-        "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+        "group grid grid-cols-[2.75rem,1fr] items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors",
         isActive
           ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
-          : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+          : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground",
       )}
     >
       <span
         className={cn(
-          "flex size-9 items-center justify-center rounded-md border transition-colors",
+          "flex h-9 w-9 items-center justify-center rounded-md border transition-colors",
           isActive
-            ? "border-sidebar-primary-foreground/20 bg-sidebar-primary-foreground/10 text-sidebar-primary-foreground"
-            : "border-sidebar-border bg-muted/20 text-muted-foreground group-hover:text-[var(--sidebar-icon-hover)]",
+            ? "border-sidebar-primary-foreground/40 bg-sidebar-primary text-sidebar-primary-foreground"
+            : "border-sidebar-border bg-sidebar/70 text-sidebar-foreground/60 group-hover:border-sidebar-foreground/40 group-hover:bg-sidebar/80 group-hover:text-sidebar-foreground",
         )}
       >
-        <Icon className="size-4" aria-hidden />
+        <Icon className="h-5 w-5 transition-colors" aria-hidden />
       </span>
-      <div className="flex flex-col">
-        <span>{item.title}</span>
-        <span className="text-xs font-normal text-muted-foreground/80">{item.description}</span>
+      <div className="flex flex-col gap-0.5 text-left leading-tight">
+        <span className="text-base">{item.title}</span>
+        <span className="text-xs font-normal text-sidebar-foreground/65">
+          {item.description}
+        </span>
       </div>
     </Link>
   );
@@ -232,13 +234,13 @@ function SidebarGroup({ item, expanded, isActive, activeChildId, onToggle }: Sid
   if (isDisabled) {
     return (
       <span
-        className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground/70 transition-opacity"
+        className="group grid grid-cols-[2.75rem,1fr] items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-sidebar-foreground/60 opacity-70"
         aria-disabled
       >
-        <span className="flex size-9 items-center justify-center rounded-md border border-dashed border-sidebar-border bg-muted/40 text-muted-foreground/80">
-          <Lock className="size-4" aria-hidden />
+        <span className="flex h-9 w-9 items-center justify-center rounded-md border border-dashed border-sidebar-border/70 bg-sidebar/60 text-sidebar-foreground/60">
+          <Lock className="h-5 w-5" aria-hidden />
         </span>
-        <div className="flex flex-col">
+        <div className="flex flex-col gap-0.5 text-left">
           <span className="font-medium">{item.title}</span>
           <span className="text-xs">Em breve</span>
         </div>
@@ -252,36 +254,36 @@ function SidebarGroup({ item, expanded, isActive, activeChildId, onToggle }: Sid
         type="button"
         onClick={onToggle}
         className={cn(
-          "group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+          "group grid w-full grid-cols-[2.75rem,1fr,auto] items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors",
           isActive
             ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
-            : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+            : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground",
         )}
         aria-expanded={expanded}
       >
         <span
           className={cn(
-            "flex size-9 items-center justify-center rounded-md border transition-colors",
+            "flex h-9 w-9 items-center justify-center rounded-md border transition-colors",
             isActive
-              ? "border-sidebar-primary-foreground/20 bg-sidebar-primary-foreground/10 text-sidebar-primary-foreground"
-              : "border-sidebar-border bg-muted/20 text-muted-foreground group-hover:text-[var(--sidebar-icon-hover)]",
+              ? "border-sidebar-primary-foreground/40 bg-sidebar-primary text-sidebar-primary-foreground"
+              : "border-sidebar-border bg-sidebar/70 text-sidebar-foreground/60 group-hover:border-sidebar-foreground/40 group-hover:bg-sidebar/80 group-hover:text-sidebar-foreground",
           )}
         >
-          <Icon className="size-4" aria-hidden />
+          <Icon className="h-5 w-5 transition-colors" aria-hidden />
         </span>
-        <span className="flex flex-1 flex-col items-start">
-          <span>{item.title}</span>
-          <span className="text-xs font-normal text-muted-foreground/80">{item.description}</span>
+        <span className="flex flex-1 flex-col items-start gap-0.5 text-left leading-tight">
+          <span className="text-base">{item.title}</span>
+          <span className="text-xs font-normal text-sidebar-foreground/65">{item.description}</span>
         </span>
         <ChevronDown
           className={cn(
-            "size-4 text-muted-foreground transition-transform",
+            "h-4 w-4 text-sidebar-foreground/60 transition-transform",
             expanded && "rotate-180",
           )}
           aria-hidden
         />
       </button>
-      <div className={cn("space-y-1 pl-12", !expanded && "hidden")}>
+      <div className={cn("space-y-1 border-l border-sidebar-border/70 pl-6", !expanded && "hidden")}>
         {children.map((child) => {
           const childIsActive = child.id === activeChildId;
           return (
@@ -289,10 +291,10 @@ function SidebarGroup({ item, expanded, isActive, activeChildId, onToggle }: Sid
               key={child.id}
               href={child.href}
               className={cn(
-                "flex items-center rounded-md px-3 py-1.5 text-sm transition-colors",
+                "flex items-center rounded-md px-3 py-1.5 text-sm transition-colors text-left",
                 childIsActive
-                  ? "bg-sidebar-primary/15 text-sidebar-primary-foreground"
-                  : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+                  ? "bg-sidebar-primary/20 text-sidebar-primary-foreground"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
               )}
             >
               {child.title}

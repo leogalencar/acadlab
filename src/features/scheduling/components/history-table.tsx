@@ -23,7 +23,7 @@ const statusLabels = {
 } as const;
 
 const statusStyles: Record<keyof typeof statusLabels, string> = {
-  CONFIRMED: "bg-success/10 text-success-foreground",
+  CONFIRMED: "bg-success/30 text-success-foreground",
   PENDING: "bg-warning/20 text-warning-foreground",
   CANCELLED: "bg-destructive/10 text-destructive",
 };

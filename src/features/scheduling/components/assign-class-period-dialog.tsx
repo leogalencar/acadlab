@@ -149,7 +149,7 @@ export function AssignClassPeriodDialog({
               className={cn(
                 "rounded-md border px-3 py-2 text-sm",
                 formState.status === "success"
-                  ? "border-success/60 bg-success/10 text-success-foreground"
+                  ? "border-success/60 bg-success/25 text-success-foreground"
                   : "border-destructive/50 bg-destructive/10 text-destructive",
               )}
             >

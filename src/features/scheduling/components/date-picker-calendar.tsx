@@ -120,7 +120,7 @@ export function DatePickerCalendar({
                 dayState?.highlight === "reserved" &&
                   !isSelected &&
                   !isDisabled &&
-                  "bg-success/10 text-success-foreground hover:bg-success/20",
+                  "bg-success/25 text-success-foreground hover:bg-success/35",
                 dayState?.highlight === "nonTeaching" &&
                   !isSelected &&
                   "bg-destructive/10 text-destructive hover:bg-destructive/15",

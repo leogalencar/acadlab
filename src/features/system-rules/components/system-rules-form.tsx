@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import {
   CalendarX2,
@@ -45,7 +46,11 @@ import type {
   NonTeachingDayRuleMinutes,
   SerializableSystemRules,
 } from "@/features/system-rules/types";
-import { buildPaletteCssVariables, formatMinutesToTime } from "@/features/system-rules/utils";
+import {
+  buildPaletteCssVariables,
+  formatMinutesToTime,
+  parseTimeToMinutes,
+} from "@/features/system-rules/utils";
 
 const FORM_INITIAL_STATE = { status: "idle" as const };
 
@@ -138,6 +143,7 @@ interface AcademicPeriodFormState {
 
 export function SystemRulesForm({ rules }: SystemRulesFormProps) {
   const [state, formAction] = useActionState(updateSystemRulesAction, FORM_INITIAL_STATE);
+  const router = useRouter();
 
   const [colors, setColors] = useState<ColorState>(() => createColorState(rules));
   const [intervalsByPeriod, setIntervalsByPeriod] = useState<PeriodIntervalsState>(() =>
@@ -185,10 +191,6 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
   }, [rules]);
 
   useEffect(() => {
-    if (paletteBaseRef.current) {
-      return;
-    }
-
     paletteBaseRef.current = buildPaletteCssVariables({
       primaryColor: rules.primaryColor,
       secondaryColor: rules.secondaryColor,
@@ -205,7 +207,7 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
       return;
     }
 
-    const style = document.body?.style;
+    const style = document.documentElement?.style;
 
     if (!style) {
       return;
@@ -232,7 +234,7 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
         return;
       }
 
-      const style = document.body?.style;
+      const style = document.documentElement?.style;
 
       if (!style || !paletteBaseRef.current) {
         return;
@@ -263,7 +265,8 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
       infoColor: colors.info,
       dangerColor: colors.danger,
     });
-  }, [state.status, colors]);
+    router.refresh();
+  }, [state.status, colors, router]);
 
   const lastUpdatedLabel = useMemo(() => {
     if (!rules.updatedAt) {
@@ -379,13 +382,40 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
       const existing = previous[period];
       const lastInterval = existing.at(-1);
 
-      const firstClassTime = periodFields[period]?.firstClassTime ??
-        rules.periods[period].firstClassTime;
+      const periodState = periodFields[period];
+      const defaultFirstClass =
+        periodState?.firstClassTime ?? rules.periods[period].firstClassTime;
+
+      const defaultDuration =
+        lastInterval?.durationMinutes ??
+        String(rules.periods[period].intervals?.[0]?.durationMinutes ?? 15);
+
+      let suggestedStart = defaultFirstClass;
+
+      try {
+        const firstClassMinutes = parseTimeToMinutes(defaultFirstClass);
+        const resolvedDuration = Number.parseInt(
+          periodState?.classDurationMinutes ??
+            String(rules.periods[period].classDurationMinutes),
+          10,
+        );
+
+        if (lastInterval) {
+          const lastStartMinutes = parseTimeToMinutes(lastInterval.start);
+          const lastDuration = Number.parseInt(lastInterval.durationMinutes, 10);
+          const nextStart = lastStartMinutes + (Number.isFinite(lastDuration) ? lastDuration : 0);
+          suggestedStart = formatMinutesToTime(nextStart);
+        } else if (Number.isFinite(resolvedDuration) && resolvedDuration > 0) {
+          suggestedStart = formatMinutesToTime(firstClassMinutes + resolvedDuration);
+        }
+      } catch {
+        suggestedStart = defaultFirstClass;
+      }
 
       const nextInterval: IntervalFormState = {
         id: generateIntervalId(period),
-        start: lastInterval?.start ?? firstClassTime,
-        durationMinutes: lastInterval?.durationMinutes ?? "15",
+        start: suggestedStart,
+        durationMinutes: defaultDuration,
       };
 
       return {
@@ -1002,6 +1032,7 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
           const metadata = PERIOD_METADATA[period];
           const periodRules = periodFields[period];
           const intervalState = intervalsByPeriod[period] ?? [];
+          const preview = calculatePeriodPreview(periodRules, intervalState);
 
           return (
             <Card key={period}>
@@ -1093,6 +1124,7 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
                   onIntervalRemove={handleRemoveInterval}
                   onAddInterval={handleAddInterval}
                 />
+                <PeriodSummary preview={preview} />
               </CardContent>
             </Card>
           );
@@ -1212,8 +1244,8 @@ function IntervalSection({
       <div className="space-y-1.5">
         <p className="text-sm font-medium">Intervalos cadastrados</p>
         <HelperText>
-          Cadastre um ou mais intervalos para este período. Utilize o botão para adicionar novos
-          horários e defina a duração de cada pausa.
+          Cadastre intervalos que iniciem imediatamente após o término de uma aula ou de outro
+          intervalo. Utilize o botão para adicionar novos horários e defina a duração de cada pausa.
         </HelperText>
       </div>
 
@@ -1284,6 +1316,59 @@ function IntervalSection({
   );
 }
 
+interface PeriodSummaryProps {
+  preview: PeriodPreview | null;
+}
+
+function PeriodSummary({ preview }: PeriodSummaryProps) {
+  if (!preview) {
+    return (
+      <div className="rounded-lg border border-dashed border-border/70 bg-muted/20 p-4 text-xs text-muted-foreground">
+        Preencha os horários e intervalos para visualizar o resumo deste período.
+      </div>
+    );
+  }
+
+  const durationLabel = formatDuration(preview.totalDurationMinutes);
+
+  return (
+    <div className="space-y-2 rounded-lg border border-border/60 bg-muted/30 p-4 text-xs text-muted-foreground">
+      <p className="text-sm font-medium text-foreground">
+        Aulas de {preview.startLabel} até {preview.endLabel} • {preview.classSlots.length} aula
+        {preview.classSlots.length > 1 ? "s" : ""} ({durationLabel})
+      </p>
+      <div className="grid gap-1 sm:grid-cols-2">
+        {preview.classSlots.map((slot) => (
+          <div
+            key={slot.index}
+            className="flex items-center justify-between rounded-md bg-background/80 px-2 py-1 text-xs text-muted-foreground"
+          >
+            <span className="font-medium text-foreground">Aula {slot.index}</span>
+            <span>
+              {slot.startLabel} – {slot.endLabel}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function formatDuration(totalMinutes: number): string {
+  if (!Number.isFinite(totalMinutes) || totalMinutes <= 0) {
+    return "0 min";
+  }
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours > 0) {
+    return minutes > 0 ? `${hours}h ${minutes}min` : `${hours}h`;
+  }
+
+  return `${minutes}min`;
+}
+
 interface HelperTextProps {
   id?: string;
   children: ReactNode;
@@ -1305,6 +1390,96 @@ function SaveButton() {
       {pending ? "Salvando alterações..." : "Salvar regras"}
     </Button>
   );
+}
+
+interface PeriodPreview {
+  startLabel: string;
+  endLabel: string;
+  totalDurationMinutes: number;
+  classSlots: Array<{ index: number; startLabel: string; endLabel: string }>;
+}
+
+function calculatePeriodPreview(
+  period: PeriodFieldState,
+  intervals: IntervalFormState[],
+): PeriodPreview | null {
+  try {
+    const firstClassMinutes = parseTimeToMinutes(period.firstClassTime);
+    const classDuration = Number.parseInt(period.classDurationMinutes, 10);
+    const classesCount = Number.parseInt(period.classesCount, 10);
+
+    if (
+      !Number.isFinite(classDuration) ||
+      classDuration <= 0 ||
+      !Number.isFinite(classesCount) ||
+      classesCount <= 0
+    ) {
+      return null;
+    }
+
+    const normalizedIntervals = intervals
+      .map((interval) => {
+        const start = parseTimeToMinutes(interval.start);
+        const duration = Number.parseInt(interval.durationMinutes, 10);
+
+        if (!Number.isFinite(duration) || duration < 0) {
+          return null;
+        }
+
+        return { start, durationMinutes: duration };
+      })
+      .filter(
+        (entry): entry is { start: number; durationMinutes: number } => entry !== null,
+      )
+      .sort((left, right) => left.start - right.start);
+
+    let currentTime = firstClassMinutes;
+    let intervalIndex = 0;
+
+    const classSlots: Array<{ index: number; startLabel: string; endLabel: string }> = [];
+
+    for (let classIndex = 0; classIndex < classesCount; classIndex += 1) {
+      while (
+        intervalIndex < normalizedIntervals.length &&
+        normalizedIntervals[intervalIndex]!.start <= currentTime
+      ) {
+        currentTime =
+          normalizedIntervals[intervalIndex]!.start +
+          normalizedIntervals[intervalIndex]!.durationMinutes;
+        intervalIndex += 1;
+      }
+
+      const classStart = currentTime;
+      const classEnd = classStart + classDuration;
+
+      classSlots.push({
+        index: classIndex + 1,
+        startLabel: formatMinutesToTime(classStart),
+        endLabel: formatMinutesToTime(classEnd),
+      });
+
+      currentTime = classEnd;
+
+      while (
+        intervalIndex < normalizedIntervals.length &&
+        normalizedIntervals[intervalIndex]!.start === currentTime
+      ) {
+        currentTime += normalizedIntervals[intervalIndex]!.durationMinutes;
+        intervalIndex += 1;
+      }
+    }
+
+    const totalDurationMinutes = Math.max(0, currentTime - firstClassMinutes);
+
+    return {
+      startLabel: formatMinutesToTime(firstClassMinutes),
+      endLabel: formatMinutesToTime(currentTime),
+      totalDurationMinutes,
+      classSlots,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function createColorState(rules: SerializableSystemRules): ColorState {

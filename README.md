@@ -10,7 +10,7 @@ AcadLab is a web platform for integrated management of academic laboratories, bu
 Check the [`docs/`](docs/) directory for module-specific quick-start and testing guides.
 
 ## Tech Stack
-- **Framework**: Next.js 15.5.4 (App Router, Server Components, Turbopack)
+- **Framework**: Next.js 16 (App Router, Server Components, Turbopack)
 - **Languages**: TypeScript, React 19
 - **UI**: Tailwind CSS v4 + shadcn/ui (New York theme)
 - **Auth**: NextAuth with Prisma Adapter (credentials provider)

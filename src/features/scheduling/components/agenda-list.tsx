@@ -242,7 +242,7 @@ export function AgendaList({
                     </div>
                   ) : null}
                   <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
-                    <span className="inline-flex items-center gap-2 rounded-full bg-success/10 px-3 py-1 text-xs font-medium text-success-foreground">
+                    <span className="inline-flex items-center gap-2 rounded-full bg-success/30 px-3 py-1 text-xs font-medium text-success-foreground">
                       {statusLabel}
                     </span>
                     {reservation.recurrenceId ? (
@@ -388,7 +388,7 @@ export function AgendaList({
                                 ) : null}
                               </div>
                               <div className="flex flex-wrap items-center gap-2">
-                                <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2.5 py-0.5 text-[11px] font-medium text-success-foreground">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-success/30 px-2.5 py-0.5 text-[11px] font-medium text-success-foreground">
                                   {statusLabel}
                                 </span>
                                 {reservation.recurrenceId ? (
