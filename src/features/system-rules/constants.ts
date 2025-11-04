@@ -105,6 +105,7 @@ export const DEFAULT_SYSTEM_RULES = {
       durationWeeks: 20,
       description: "Período padrão para turmas semestrais.",
     },
+    preventConcurrentTeacherReservations: false,
   },
   account: {
     allowedEmailDomains: DEFAULT_ALLOWED_EMAIL_DOMAINS,

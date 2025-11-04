@@ -156,6 +156,8 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
     createEmailDomainState(rules),
   );
   const [timeZone, setTimeZone] = useState<string>(() => rules.timeZone);
+  const [preventConcurrentTeacherReservations, setPreventConcurrentTeacherReservations] =
+    useState<boolean>(() => rules.preventConcurrentTeacherReservations);
   const [nonTeachingDays, setNonTeachingDays] = useState<NonTeachingDayFormState[]>(() =>
     createNonTeachingDaysState(rules),
   );
@@ -176,6 +178,7 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
     setPeriodFields(createPeriodFieldsState(rules));
     setEmailDomains(createEmailDomainState(rules));
     setTimeZone(rules.timeZone);
+    setPreventConcurrentTeacherReservations(rules.preventConcurrentTeacherReservations);
     setNonTeachingDays(createNonTeachingDaysState(rules));
     setBranding(createBrandingState(rules));
     setLogoPreview(rules.branding.logoUrl ?? null);
@@ -821,6 +824,28 @@ export function SystemRulesForm({ rules }: SystemRulesFormProps) {
             <HelperText>
               Os horários exibidos no sistema seguirão este fuso horário.
             </HelperText>
+          </div>
+
+          <div className="flex items-start gap-3 rounded-md border border-border/60 bg-muted/20 p-3">
+            <input
+              id="preventConcurrentTeacherReservations"
+              name="preventConcurrentTeacherReservations"
+              type="checkbox"
+              value="on"
+              checked={preventConcurrentTeacherReservations}
+              onChange={(event) =>
+                setPreventConcurrentTeacherReservations(event.currentTarget.checked)
+              }
+              className="mt-1 h-4 w-4"
+            />
+            <div className="space-y-1">
+              <Label htmlFor="preventConcurrentTeacherReservations" className="text-sm font-medium">
+                Impedir reservas simultâneas para um mesmo responsável
+              </Label>
+              <HelperText>
+                Quando ativado, o sistema bloqueia reservas em horários coincidentes para o mesmo professor, independentemente do laboratório selecionado.
+              </HelperText>
+            </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">

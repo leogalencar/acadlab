@@ -289,6 +289,7 @@ const systemRulesSchema = z
     dangerColor: colorSchema,
     allowedEmailDomains: emailDomainListSchema,
     timeZone: timeZoneSchema,
+    preventConcurrentTeacherReservations: z.boolean(),
     institutionName: institutionNameSchema,
     nonTeachingDays: z
       .array(nonTeachingDaySchema)
@@ -392,6 +393,10 @@ export async function updateSystemRulesAction(
     dangerColor: getStringValue(formData, "dangerColor"),
     allowedEmailDomains: extractAllowedDomains(formData),
     timeZone: getStringValue(formData, "timeZone"),
+    preventConcurrentTeacherReservations: getCheckboxValue(
+      formData,
+      "preventConcurrentTeacherReservations",
+    ),
     institutionName: getStringValue(formData, "institutionName"),
     nonTeachingDays: nonTeachingDaysForm,
     classPeriodLabel: getStringValue(formData, "classPeriodLabel"),
@@ -481,6 +486,7 @@ export async function updateSystemRulesAction(
 
   const schedulePayload = {
     timeZone: data.timeZone,
+    preventConcurrentTeacherReservations: data.preventConcurrentTeacherReservations,
     periods: PERIOD_IDS.reduce(
       (accumulator, period) => {
         accumulator[period] = mapPeriodForPersistence(data[period]);
@@ -556,6 +562,13 @@ type NonTeachingDaySchemaOutput = z.infer<typeof nonTeachingDaySchema>;
 function getStringValue(formData: FormData, name: string): string | undefined {
   const value = formData.get(name);
   return typeof value === "string" ? value : undefined;
+}
+
+function getCheckboxValue(formData: FormData, name: string): boolean {
+  const values = formData.getAll(name);
+  return values.some((value) =>
+    typeof value === "string" ? value === "on" || value.toLowerCase() === "true" : false,
+  );
 }
 
 function buildPeriodFormPayload(formData: FormData, period: PeriodId) {

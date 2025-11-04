@@ -351,18 +351,32 @@ export async function createReservationAction(
           throw new NonTeachingDayError(occurrenceStart, occurrenceNonTeachingRule.description);
         }
 
-        const hasConflict = await tx.reservation.findFirst({
+        const conflictScopes = [
+          { laboratoryId },
+          ...(systemRules.preventConcurrentTeacherReservations
+            ? [{ createdById: session.user.id }]
+            : []),
+        ];
+
+        const conflictingReservation = await tx.reservation.findFirst({
           where: {
-            laboratoryId,
             status: { not: ReservationStatus.CANCELLED },
             startTime: { lt: occurrenceEnd },
             endTime: { gt: occurrenceStart },
+            OR: conflictScopes,
           },
-          select: { id: true },
+          select: { id: true, laboratoryId: true, createdById: true },
         });
 
-        if (hasConflict) {
-          throw new ReservationConflictError(occurrenceStart);
+        if (conflictingReservation) {
+          const conflictKind: "lab" | "user" =
+            systemRules.preventConcurrentTeacherReservations &&
+            conflictingReservation.createdById === session.user.id &&
+            conflictingReservation.laboratoryId !== laboratoryId
+              ? "user"
+              : "lab";
+
+          throw new ReservationConflictError(occurrenceStart, conflictKind);
         }
 
         await tx.reservation.create({
@@ -386,9 +400,10 @@ export async function createReservationAction(
 
       return {
         status: "error",
-        message: "Já existe uma reserva confirmada para " +
-          formatted +
-          ". Selecione outro horário.",
+        message:
+          error.kind === "user"
+            ? `Você já possui uma reserva confirmada para ${formatted} em outro laboratório. Cancele a reserva existente ou escolha outro horário.`
+            : `Já existe uma reserva confirmada para ${formatted}. Selecione outro horário.`,
       };
     }
 
@@ -710,18 +725,32 @@ export async function assignClassPeriodReservationAction(
           throw new NonTeachingDayError(occurrenceStart, occurrenceNonTeaching.description);
         }
 
-        const hasConflict = await tx.reservation.findFirst({
+        const conflictScopes = [
+          { laboratoryId },
+          ...(systemRules.preventConcurrentTeacherReservations
+            ? [{ createdById: teacher.id }]
+            : []),
+        ];
+
+        const conflictingReservation = await tx.reservation.findFirst({
           where: {
-            laboratoryId,
             status: { not: ReservationStatus.CANCELLED },
             startTime: { lt: occurrenceEnd },
             endTime: { gt: occurrenceStart },
+            OR: conflictScopes,
           },
-          select: { id: true },
+          select: { id: true, laboratoryId: true, createdById: true },
         });
 
-        if (hasConflict) {
-          throw new ReservationConflictError(occurrenceStart);
+        if (conflictingReservation) {
+          const conflictKind: "lab" | "user" =
+            systemRules.preventConcurrentTeacherReservations &&
+            conflictingReservation.createdById === teacher.id &&
+            conflictingReservation.laboratoryId !== laboratoryId
+              ? "user"
+              : "lab";
+
+          throw new ReservationConflictError(occurrenceStart, conflictKind);
         }
 
         await tx.reservation.create({
@@ -746,7 +775,10 @@ export async function assignClassPeriodReservationAction(
 
       return {
         status: "error",
-        message: `Já existe uma reserva confirmada para ${formatted}. Ajuste a seleção de horários.`,
+        message:
+          error.kind === "user"
+            ? `O professor selecionado já possui uma reserva confirmada para ${formatted} em outro laboratório. Ajuste a seleção de horários.`
+            : `Já existe uma reserva confirmada para ${formatted}. Ajuste a seleção de horários.`,
       };
     }
 
@@ -800,7 +832,7 @@ function resolveAcademicPeriodConfig(systemRules: SerializableSystemRules): {
 }
 
 class ReservationConflictError extends Error {
-  constructor(public readonly date: Date) {
+  constructor(public readonly date: Date, public readonly kind: "lab" | "user") {
     super("Reservation conflict");
   }
 }

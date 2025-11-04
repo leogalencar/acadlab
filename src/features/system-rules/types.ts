@@ -47,6 +47,7 @@ export interface SerializableSystemRules {
   infoColor: string;
   dangerColor: string;
   timeZone: string;
+  preventConcurrentTeacherReservations: boolean;
   branding: BrandingSettings;
   academicPeriod: AcademicPeriodRule;
   nonTeachingDays: NonTeachingDayRule[];
@@ -81,6 +82,7 @@ export interface ScheduleRuleMinutes {
   periods: Record<PeriodId, PeriodRuleMinutes>;
   nonTeachingDays: NonTeachingDayRuleMinutes[];
   academicPeriod: AcademicPeriodRule;
+  preventConcurrentTeacherReservations: boolean;
 }
 
 export type SystemRulesActionState = {

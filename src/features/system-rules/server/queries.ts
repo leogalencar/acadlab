@@ -42,6 +42,8 @@ export async function getSystemRules(): Promise<SerializableSystemRules> {
     periods: DEFAULT_SYSTEM_RULES.schedule.periods,
     nonTeachingDays: [...DEFAULT_SYSTEM_RULES.schedule.nonTeachingDays] as NonTeachingDayRuleMinutes[],
     academicPeriod: DEFAULT_SYSTEM_RULES.schedule.academicPeriod,
+    preventConcurrentTeacherReservations:
+      DEFAULT_SYSTEM_RULES.schedule.preventConcurrentTeacherReservations ?? false,
   };
 
   const fallback = mapToSerializable(
@@ -86,7 +88,7 @@ export async function getSystemRules(): Promise<SerializableSystemRules> {
       emailDomainsRecord?.updatedAt,
     );
 
-    const result = mapToSerializable(schedule, colors, emailDomains, branding);
+  const result = mapToSerializable(schedule, colors, emailDomains, branding);
 
     if (latestUpdate) {
       result.updatedAt = latestUpdate.toISOString();
@@ -153,6 +155,9 @@ function mapToSerializable(
     infoColor: colors.infoColor,
     dangerColor: colors.dangerColor,
     timeZone: schedule.timeZone,
+    preventConcurrentTeacherReservations: Boolean(
+      schedule.preventConcurrentTeacherReservations,
+    ),
     nonTeachingDays: schedule.nonTeachingDays.map((rule, index) => {
       if (rule.kind === "weekday") {
         return {
@@ -256,6 +261,10 @@ function parseScheduleValue(
   const record = value as Record<string, unknown>;
   const periods = record.periods;
   const timeZone = typeof record.timeZone === "string" ? record.timeZone : DEFAULT_SYSTEM_RULES.schedule.timeZone;
+  const preventConcurrentTeacherReservations =
+    typeof record.preventConcurrentTeacherReservations === "boolean"
+      ? record.preventConcurrentTeacherReservations
+      : DEFAULT_SYSTEM_RULES.schedule.preventConcurrentTeacherReservations ?? false;
   const nonTeachingDays = Array.isArray(record.nonTeachingDays)
     ? record.nonTeachingDays
         .map((entry) => parseNonTeachingDay(entry))
@@ -274,7 +283,13 @@ function parseScheduleValue(
     parsed[period] = parsePeriodValue(raw, DEFAULT_PERIOD_RULES_MINUTES[period]);
   }
 
-  return { timeZone, periods: parsed, nonTeachingDays, academicPeriod };
+  return {
+    timeZone,
+    periods: parsed,
+    nonTeachingDays,
+    academicPeriod,
+    preventConcurrentTeacherReservations,
+  };
 }
 
 function parseNonTeachingDay(value: unknown): NonTeachingDayRuleMinutes | null {
