@@ -45,6 +45,8 @@ export function SoftwareRequestsClient({
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [statusDialogKey, setStatusDialogKey] = useState(0);
+  const [detailsRequestId, setDetailsRequestId] = useState<string | null>(null);
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
 
   const selectedRequest = useMemo(() => {
     if (!selectedRequestId) {
@@ -64,6 +66,24 @@ export function SoftwareRequestsClient({
       setStatusDialogKey((key) => key + 1);
     }
   }, [requests, selectedRequestId]);
+
+  const detailsRequest = useMemo(() => {
+    if (!detailsRequestId) {
+      return null;
+    }
+    return requests.find((request) => request.id === detailsRequestId) ?? null;
+  }, [detailsRequestId, requests]);
+
+  useEffect(() => {
+    if (!detailsRequestId) {
+      return;
+    }
+    const exists = requests.some((request) => request.id === detailsRequestId);
+    if (!exists) {
+      setDetailsDialogOpen(false);
+      setDetailsRequestId(null);
+    }
+  }, [detailsRequestId, requests]);
 
   const updateQueryParams = (updates: Record<string, string | null>) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -111,6 +131,16 @@ export function SoftwareRequestsClient({
     setStatusDialogKey((key) => key + 1);
   };
 
+  const handleOpenDetailsDialog = (requestId: string) => {
+    setDetailsRequestId(requestId);
+    setDetailsDialogOpen(true);
+  };
+
+  const handleCloseDetailsDialog = () => {
+    setDetailsDialogOpen(false);
+    setDetailsRequestId(null);
+  };
+
   return (
     <div className="space-y-6">
       <StatusSummary statusCounts={statusCounts} canManage={canManage} />
@@ -130,67 +160,61 @@ export function SoftwareRequestsClient({
           <tbody>
             {requests.length > 0 ? (
               requests.map((request) => (
-                <tr key={request.id} className="border-t border-border/60">
-                  <td className="p-4 align-top">
-                    <div className="space-y-2">
+                <tr
+                  key={request.id}
+                  className="border-t border-border/60 transition-colors hover:bg-muted/20"
+                  onClick={() => handleOpenDetailsDialog(request.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleOpenDetailsDialog(request.id);
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  aria-haspopup="dialog"
+                  >
+                    <td className="p-4 align-middle">
                       <p className="font-medium text-foreground">
                         {request.softwareName}
                         {request.softwareVersion ? (
                           <span className="text-muted-foreground"> • {request.softwareVersion}</span>
                         ) : null}
                       </p>
-                      {request.justification ? (
-                        <p className="text-xs leading-relaxed text-muted-foreground">{request.justification}</p>
-                      ) : null}
-                      {request.responseNotes ? (
-                        <p className="text-xs leading-relaxed text-primary/80">
-                          Observações da revisão: {request.responseNotes}
-                        </p>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td className="p-4 align-top">
-                    <div className="space-y-1">
-                      <p className="font-medium text-foreground">{request.laboratory.name}</p>
-                      <p className="text-xs text-muted-foreground">Solicitado em {formatDate(request.createdAt)}</p>
-                    </div>
-                  </td>
-                  <td className="p-4 align-top">
-                    <div className="space-y-1">
-                      <p className="font-medium text-foreground">{request.requester.name}</p>
-                      <p className="text-xs text-muted-foreground">Identificador: {request.requester.id}</p>
-                    </div>
-                  </td>
-                  <td className="p-4 align-top">
-                    <div className="space-y-2">
-                      <SoftwareRequestStatusBadge status={request.status} />
-                      {request.reviewer && request.reviewedAt ? (
-                        <p className="text-xs text-muted-foreground">
-                          Última análise por {request.reviewer.name} em {formatDate(request.reviewedAt)}
-                        </p>
-                      ) : (
-                        <p className="text-xs text-muted-foreground">Aguardando avaliação da equipe técnica.</p>
-                      )}
-                    </div>
-                  </td>
-                  <td className="p-4 align-top text-xs text-muted-foreground">{formatDate(request.updatedAt)}</td>
-                  {canManage ? (
-                    <td className="p-4 align-top text-right">
-                      <div className="flex flex-col items-end gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="gap-2"
-                          onClick={() => handleOpenStatusDialog(request.id)}
-                        >
-                          <NotebookPen className="size-4" aria-hidden />
-                          Atualizar status
-                        </Button>
-                      </div>
                     </td>
-                  ) : null}
-                </tr>
+                    <td className="p-4 align-middle">
+                      <p className="font-medium text-foreground">{request.laboratory.name}</p>
+                    </td>
+                    <td className="p-4 align-middle">
+                      <p className="font-medium text-foreground">{request.requester.name}</p>
+                    </td>
+                    <td className="p-4 align-middle">
+                      <SoftwareRequestStatusBadge status={request.status} />
+                    </td>
+                    <td className="p-4 align-middle text-xs text-muted-foreground">{formatDate(request.updatedAt)}</td>
+                    {canManage ? (
+                      <td className="p-4 align-middle text-right">
+                        <div className="flex flex-col items-end gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="gap-2"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleOpenStatusDialog(request.id);
+                            }}
+                            onKeyDown={(event) => {
+                              event.stopPropagation();
+                            }}
+                          >
+                            <NotebookPen className="size-4" aria-hidden />
+                            Atualizar status
+                          </Button>
+                        </div>
+                      </td>
+                    ) : null}
+                  </tr>
               ))
             ) : (
               <tr>
@@ -257,6 +281,21 @@ export function SoftwareRequestsClient({
           </div>
         </div>
       </div>
+
+      {detailsRequest ? (
+        <SoftwareRequestDetailsDialog
+          request={detailsRequest}
+          actorRole={actorRole}
+          open={detailsDialogOpen}
+          onOpenChange={(open) => {
+            if (!open) {
+              handleCloseDetailsDialog();
+            } else {
+              setDetailsDialogOpen(true);
+            }
+          }}
+        />
+      ) : null}
 
       {canManage && selectedRequest ? (
         <UpdateRequestStatusDialog
@@ -464,6 +503,90 @@ function UpdateRequestStatusDialog({ request, open, onOpenChange, onUpdated }: U
             ) : (
               "Salvar alterações"
             )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface SoftwareRequestDetailsDialogProps {
+  request: SerializableSoftwareRequest;
+  actorRole: Role;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+function SoftwareRequestDetailsDialog({ request, actorRole, open, onOpenChange }: SoftwareRequestDetailsDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Detalhes da solicitação</DialogTitle>
+          <DialogDescription>
+            Consulte as informações completas do pedido e acompanhe o histórico de análise.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-6 text-sm text-muted-foreground">
+          <div className="grid gap-4 rounded-lg border border-border/60 bg-muted/40 p-4 md:grid-cols-2">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground/80">Software</p>
+              <p className="text-base font-semibold text-foreground">
+                {request.softwareName}
+                {request.softwareVersion ? (
+                  <span className="text-muted-foreground"> • {request.softwareVersion}</span>
+                ) : null}
+              </p>
+              {request.justification ? (
+                <p className="mt-2 leading-relaxed">{request.justification}</p>
+              ) : (
+                <p className="mt-2 text-xs text-muted-foreground/80">Sem justificativa adicional fornecida.</p>
+              )}
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground/80">Status</p>
+              <div className="mt-1 flex items-center gap-2">
+                <SoftwareRequestStatusBadge status={request.status} />
+                <span className="text-xs">Atualizado em {formatDate(request.updatedAt)}</span>
+              </div>
+              {request.reviewer && request.reviewedAt ? (
+                <p className="mt-2">
+                  Última análise por{" "}
+                  <span className="font-medium text-foreground">{request.reviewer.name}</span> em{" "}
+                  <span className="font-medium text-foreground">{formatDate(request.reviewedAt)}</span>
+                </p>
+              ) : (
+                <p className="mt-2 text-xs text-muted-foreground/80">Aguardando avaliação da equipe técnica.</p>
+              )}
+              {request.responseNotes ? (
+                <p className="mt-2 leading-relaxed text-primary/80">Observações da revisão: {request.responseNotes}</p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="space-y-1">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground/80">Solicitado em</p>
+              <p className="text-sm font-medium text-foreground">{formatDate(request.createdAt)}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground/80">Laboratório</p>
+              <p className="text-sm font-medium text-foreground">{request.laboratory.name}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground/80">Solicitante</p>
+              <p className="text-sm font-medium text-foreground">{request.requester.name}</p>
+              {actorRole === Role.ADMIN ? (
+                <p className="text-xs text-muted-foreground">Identificador: {request.requester.id}</p>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            Fechar
           </Button>
         </DialogFooter>
       </DialogContent>
