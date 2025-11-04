@@ -2,13 +2,13 @@
 
 ## Repository Overview
 
-**Acadlab** is a Next.js 15.5.4 web application built with TypeScript, React 19, and Tailwind CSS v4. This is a modern web project using the Next.js App Router architecture with server components. The project integrates shadcn/ui component library for UI components.
+**Acadlab** is a Next.js 16 web application built with TypeScript, React 19, and Tailwind CSS v4. This is a modern web project using the Next.js App Router architecture with server components. The project integrates shadcn/ui component library for UI components.
 
 **Repository Stats:**
 - Project Type: Next.js web application
 - Languages: TypeScript, React (TSX)
 - Size: ~6 source files in `src/` directory
-- Framework: Next.js 15.5.4 with Turbopack
+- Framework: Next.js 16 with Turbopack
 - Styling: Tailwind CSS v4, PostCSS
 - UI Components: shadcn/ui (New York style)
 - Package Manager: pnpm (Node.js v20+, pnpm v9+)
@@ -195,7 +195,7 @@ npx shadcn@latest add <component-name>
 ## Dependencies to Know
 
 **Core Dependencies:**
-- `next` 15.5.4 - Next.js framework
+- `next` 16 - Next.js framework
 - `react` 19.2.0 - React library
 - `react-dom` 19.2.0 - React DOM renderer
 - `tailwindcss` ^4 - Tailwind CSS v4

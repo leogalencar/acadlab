@@ -4,6 +4,7 @@ import Link from "next/link";
 import { AuthCard } from "@/features/auth/components/auth-card";
 import { ResetPasswordForm } from "@/features/auth/components/reset-password-form";
 import { prisma } from "@/lib/prisma";
+import { getSystemRules } from "@/features/system-rules/server/queries";
 
 interface ResetPasswordPageProps {
   params: Promise<{ token: string }>;
@@ -12,6 +13,8 @@ interface ResetPasswordPageProps {
 export default async function ResetPasswordPage({ params }: ResetPasswordPageProps) {
   const { token } = await params;
   const hashedToken = createHash("sha256").update(token).digest("hex");
+  const systemRules = await getSystemRules();
+  const brandName = systemRules.branding.institutionName;
 
   const tokenRecord = await prisma.passwordResetToken.findUnique({
     where: { token: hashedToken },
@@ -44,7 +47,7 @@ export default async function ResetPasswordPage({ params }: ResetPasswordPagePro
     <div className="flex min-h-screen items-center justify-center bg-muted/40 px-4 py-12">
       <AuthCard
         title="Definir nova senha"
-        description="Escolha uma nova senha segura para acessar o AcadLab."
+        description={`Escolha uma nova senha segura para acessar o ${brandName}.`}
         footer={
           <span>
             Lembrou da senha? <Link href="/login" className="font-medium text-primary hover:underline">Voltar para o login</Link>.

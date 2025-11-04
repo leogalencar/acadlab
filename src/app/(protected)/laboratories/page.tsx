@@ -9,7 +9,7 @@ import { resolveSearchParams, type SearchParamsLike } from "@/features/shared/se
 import { getAllSoftwareOptions } from "@/features/software-management/server/queries";
 
 export const metadata: Metadata = {
-  title: "Laboratórios • AcadLab",
+  title: "Laboratórios",
 };
 
 type LaboratoriesSearchParams = Record<string, string | string[] | undefined>;
@@ -83,4 +83,3 @@ export default async function LaboratoriesPage({
     </div>
   );
 }
-

@@ -42,31 +42,60 @@ export function getReadableTextColor(hexColor: string): string {
   return luminance > 0.55 ? "#000000" : "#FFFFFF";
 }
 
+function channelToHex(value: number): string {
+  const clamped = Math.max(0, Math.min(255, Math.round(value)));
+  return clamped.toString(16).padStart(2, "0").toUpperCase();
+}
+
+function rgbToHex(red: number, green: number, blue: number): string {
+  return `#${channelToHex(red)}${channelToHex(green)}${channelToHex(blue)}`;
+}
+
+function normalizeHexColor(hexColor: string): string {
+  const [red, green, blue] = parseHexColor(hexColor);
+  return rgbToHex(red, green, blue);
+}
+
 export function buildPaletteCssVariables(colors: {
   primaryColor: string;
   secondaryColor: string;
   accentColor: string;
+  successColor: string;
+  warningColor: string;
+  infoColor: string;
+  dangerColor: string;
 }): Record<string, string> {
-  const primaryForeground = getReadableTextColor(colors.primaryColor);
-  const secondaryForeground = getReadableTextColor(colors.secondaryColor);
-  const accentForeground = getReadableTextColor(colors.accentColor);
+  const primary = normalizeHexColor(colors.primaryColor || "#1D4ED8");
+  const secondary = normalizeHexColor(colors.secondaryColor || "#1E293B");
+  const accent = normalizeHexColor(colors.accentColor || "#F97316");
+  const success = normalizeHexColor(colors.successColor || "#059669");
+  const warning = normalizeHexColor(colors.warningColor || "#F59E0B");
+  const info = normalizeHexColor(colors.infoColor || "#0EA5E9");
+  const danger = normalizeHexColor(colors.dangerColor || "#DC2626");
+
+  const baseBackground = "#FFFFFF";
+  const baseForeground = "#111827";
+  const darkBackground = "#0F172A";
+  const darkForeground = "#F8FAFC";
 
   return {
-    "--primary": colors.primaryColor,
-    "--primary-foreground": primaryForeground,
-    "--sidebar-primary": colors.primaryColor,
-    "--sidebar-primary-foreground": primaryForeground,
-    "--secondary": colors.secondaryColor,
-    "--secondary-foreground": secondaryForeground,
-    "--sidebar": colors.secondaryColor,
-    "--sidebar-foreground": secondaryForeground,
-    "--sidebar-border": `color-mix(in srgb, ${colors.secondaryColor} 70%, white 30%)`,
-    "--sidebar-ring": colors.accentColor,
-    "--accent": colors.accentColor,
-    "--accent-foreground": accentForeground,
-    "--sidebar-accent": colors.accentColor,
-    "--sidebar-accent-foreground": accentForeground,
-    "--ring": colors.accentColor,
+    "--primary-base": primary,
+    "--primary-foreground-base": getReadableTextColor(primary),
+    "--secondary-base": secondary,
+    "--accent-base": accent,
+    "--sidebar-base": secondary,
+    "--theme-light-background": baseBackground,
+    "--theme-light-foreground": baseForeground,
+    "--theme-dark-background": darkBackground,
+    "--theme-dark-foreground": darkForeground,
+    "--theme-success": success,
+    "--theme-success-foreground": getReadableTextColor(success),
+    "--theme-warning": warning,
+    "--theme-warning-foreground": getReadableTextColor(warning),
+    "--theme-info": info,
+    "--theme-info-foreground": getReadableTextColor(info),
+    "--theme-danger": danger,
+    "--theme-danger-foreground": getReadableTextColor(danger),
   };
 }
 

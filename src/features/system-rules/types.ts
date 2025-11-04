@@ -12,10 +12,45 @@ export interface PeriodRuleInput {
   intervals: IntervalRuleInput[];
 }
 
+export type NonTeachingDayRule =
+  | {
+      id: string;
+      kind: "specific-date";
+      date: string;
+      description?: string | null;
+      repeatsAnnually?: boolean;
+    }
+  | {
+      id: string;
+      kind: "weekday";
+      weekDay: number;
+      description?: string | null;
+    };
+
+export interface BrandingSettings {
+  logoUrl: string | null;
+  institutionName: string;
+}
+
+export interface AcademicPeriodRule {
+  label: string;
+  durationWeeks: number;
+  description?: string | null;
+}
+
 export interface SerializableSystemRules {
   primaryColor: string;
   secondaryColor: string;
   accentColor: string;
+  successColor: string;
+  warningColor: string;
+  infoColor: string;
+  dangerColor: string;
+  timeZone: string;
+  preventConcurrentTeacherReservations: boolean;
+  branding: BrandingSettings;
+  academicPeriod: AcademicPeriodRule;
+  nonTeachingDays: NonTeachingDayRule[];
   periods: Record<PeriodId, PeriodRuleInput>;
   allowedEmailDomains: string[];
   updatedAt?: string;
@@ -33,8 +68,21 @@ export interface PeriodRuleMinutes {
   intervals: IntervalRuleMinutes[];
 }
 
+export interface NonTeachingDayRuleMinutes {
+  kind: "specific-date" | "weekday";
+  date?: string;
+  weekDay?: number;
+  description?: string | null;
+  repeatsAnnually?: boolean;
+  id?: string;
+}
+
 export interface ScheduleRuleMinutes {
+  timeZone: string;
   periods: Record<PeriodId, PeriodRuleMinutes>;
+  nonTeachingDays: NonTeachingDayRuleMinutes[];
+  academicPeriod: AcademicPeriodRule;
+  preventConcurrentTeacherReservations: boolean;
 }
 
 export type SystemRulesActionState = {

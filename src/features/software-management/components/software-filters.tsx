@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { SoftwareFiltersState, SoftwareSortingState } from "@/features/software-management/types";
+import { MultiCombobox } from "@/features/shared/components/multi-combobox";
 
 interface SoftwareFiltersProps {
   filters: SoftwareFiltersState;
@@ -14,8 +15,11 @@ interface SoftwareFiltersProps {
 }
 
 export function SoftwareFilters({ filters, sorting, supplierOptions, perPage }: SoftwareFiltersProps) {
-  const selectedSuppliers = new Set(filters.suppliers);
   const hasSupplierOptions = supplierOptions.length > 0;
+  const supplierComboboxOptions = supplierOptions.map((supplier) => ({
+    value: supplier,
+    label: supplier,
+  }));
 
   return (
     <Card>
@@ -59,53 +63,18 @@ export function SoftwareFilters({ filters, sorting, supplierOptions, perPage }: 
                 defaultValue={filters.updatedTo ?? ""}
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="createdFrom">Criado a partir de</Label>
-              <Input
-                id="createdFrom"
-                name="createdFrom"
-                type="date"
-                defaultValue={filters.createdFrom ?? ""}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="createdTo">Criado até</Label>
-              <Input
-                id="createdTo"
-                name="createdTo"
-                type="date"
-                defaultValue={filters.createdTo ?? ""}
-              />
-            </div>
           </div>
 
           <div className="space-y-3">
             <Label>Fornecedores</Label>
             {hasSupplierOptions ? (
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {supplierOptions.map((supplier) => {
-                  const optionId = `supplier-${supplier}`;
-                  const isSelected = selectedSuppliers.has(supplier);
-
-                  return (
-                    <label
-                      key={supplier}
-                      htmlFor={optionId}
-                      className="flex items-center gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
-                    >
-                      <input
-                        id={optionId}
-                        name="supplier"
-                        type="checkbox"
-                        value={supplier}
-                        defaultChecked={isSelected}
-                        className="size-4 rounded border border-input accent-primary"
-                      />
-                      <span>{supplier}</span>
-                    </label>
-                  );
-                })}
-              </div>
+              <MultiCombobox
+                name="supplier"
+                options={supplierComboboxOptions}
+                defaultValue={filters.suppliers}
+                placeholder="Selecione fornecedores"
+                searchPlaceholder="Pesquisar fornecedores..."
+              />
             ) : (
               <p className="text-sm text-muted-foreground">
                 Cadastre softwares com fornecedores para habilitar este filtro.

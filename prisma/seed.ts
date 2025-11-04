@@ -2,7 +2,7 @@ import { PrismaClient, Prisma, Role, UserStatus } from "@prisma/client";
 import { hash } from "bcryptjs";
 
 import {
-  DEFAULT_SYSTEM_RULES_MINUTES,
+  DEFAULT_SYSTEM_RULES,
   SYSTEM_RULE_NAMES,
 } from "../src/features/system-rules/constants";
 
@@ -177,16 +177,20 @@ async function ensureAdmin() {
 
 async function ensureSystemRules() {
   const colorsPayload = JSON.parse(
-    JSON.stringify(DEFAULT_SYSTEM_RULES_MINUTES.colors),
+    JSON.stringify(DEFAULT_SYSTEM_RULES.colors),
+  ) as Prisma.InputJsonValue;
+
+  const brandingPayload = JSON.parse(
+    JSON.stringify(DEFAULT_SYSTEM_RULES.branding),
   ) as Prisma.InputJsonValue;
 
   const schedulePayload = JSON.parse(
-    JSON.stringify(DEFAULT_SYSTEM_RULES_MINUTES.schedule),
+    JSON.stringify(DEFAULT_SYSTEM_RULES.schedule),
   ) as Prisma.InputJsonValue;
 
   const emailDomainsPayload = JSON.parse(
     JSON.stringify({
-      domains: DEFAULT_SYSTEM_RULES_MINUTES.account.allowedEmailDomains,
+      domains: DEFAULT_SYSTEM_RULES.account.allowedEmailDomains,
     }),
   ) as Prisma.InputJsonValue;
 
@@ -197,6 +201,14 @@ async function ensureSystemRules() {
       create: {
         name: SYSTEM_RULE_NAMES.COLORS,
         value: colorsPayload,
+      },
+    }),
+    prisma.systemRule.upsert({
+      where: { name: SYSTEM_RULE_NAMES.BRANDING },
+      update: { value: brandingPayload },
+      create: {
+        name: SYSTEM_RULE_NAMES.BRANDING,
+        value: brandingPayload,
       },
     }),
     prisma.systemRule.upsert({

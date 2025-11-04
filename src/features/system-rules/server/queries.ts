@@ -3,12 +3,15 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   DEFAULT_PERIOD_RULES_MINUTES,
-  DEFAULT_SYSTEM_RULES_MINUTES,
+  DEFAULT_SYSTEM_RULES,
   PERIOD_IDS,
   SYSTEM_RULE_NAMES,
 } from "@/features/system-rules/constants";
 import { formatMinutesToTime } from "@/features/system-rules/utils";
 import type {
+  AcademicPeriodRule,
+  NonTeachingDayRule,
+  NonTeachingDayRuleMinutes,
   PeriodRuleMinutes,
   SerializableSystemRules,
   ScheduleRuleMinutes,
@@ -18,17 +21,36 @@ type ColorRuleValues = {
   primaryColor: string;
   secondaryColor: string;
   accentColor: string;
+  successColor: string;
+  warningColor: string;
+  infoColor: string;
+  dangerColor: string;
 };
 
 type EmailDomainRuleValues = {
   domains: string[];
 };
 
+type BrandingRuleValues = {
+  logoUrl: string | null;
+  institutionName: string;
+};
+
 export async function getSystemRules(): Promise<SerializableSystemRules> {
+  const fallbackSchedule: ScheduleRuleMinutes = {
+    timeZone: DEFAULT_SYSTEM_RULES.schedule.timeZone,
+    periods: DEFAULT_SYSTEM_RULES.schedule.periods,
+    nonTeachingDays: [...DEFAULT_SYSTEM_RULES.schedule.nonTeachingDays] as NonTeachingDayRuleMinutes[],
+    academicPeriod: DEFAULT_SYSTEM_RULES.schedule.academicPeriod,
+    preventConcurrentTeacherReservations:
+      DEFAULT_SYSTEM_RULES.schedule.preventConcurrentTeacherReservations ?? false,
+  };
+
   const fallback = mapToSerializable(
-    DEFAULT_SYSTEM_RULES_MINUTES.schedule,
-    DEFAULT_SYSTEM_RULES_MINUTES.colors,
-    { domains: [...DEFAULT_SYSTEM_RULES_MINUTES.account.allowedEmailDomains] },
+    fallbackSchedule,
+    DEFAULT_SYSTEM_RULES.colors,
+    { domains: [...DEFAULT_SYSTEM_RULES.account.allowedEmailDomains] },
+    DEFAULT_SYSTEM_RULES.branding,
   );
 
   try {
@@ -37,6 +59,7 @@ export async function getSystemRules(): Promise<SerializableSystemRules> {
         name: {
           in: [
             SYSTEM_RULE_NAMES.COLORS,
+            SYSTEM_RULE_NAMES.BRANDING,
             SYSTEM_RULE_NAMES.SCHEDULE,
             SYSTEM_RULE_NAMES.EMAIL_DOMAINS,
           ],
@@ -46,24 +69,26 @@ export async function getSystemRules(): Promise<SerializableSystemRules> {
 
     const colorsRecord = records.find((entry) => entry.name === SYSTEM_RULE_NAMES.COLORS);
     const scheduleRecord = records.find((entry) => entry.name === SYSTEM_RULE_NAMES.SCHEDULE);
+    const brandingRecord = records.find((entry) => entry.name === SYSTEM_RULE_NAMES.BRANDING);
     const emailDomainsRecord = records.find(
       (entry) => entry.name === SYSTEM_RULE_NAMES.EMAIL_DOMAINS,
     );
 
-    const colors = parseColorsValue(colorsRecord?.value) ?? DEFAULT_SYSTEM_RULES_MINUTES.colors;
-    const schedule =
-      parseScheduleValue(scheduleRecord?.value) ?? DEFAULT_SYSTEM_RULES_MINUTES.schedule;
+    const colors = parseColorsValue(colorsRecord?.value) ?? DEFAULT_SYSTEM_RULES.colors;
+    const schedule = parseScheduleValue(scheduleRecord?.value) ?? fallbackSchedule;
     const emailDomains =
       parseEmailDomainsValue(emailDomainsRecord?.value) ??
-      { domains: [...DEFAULT_SYSTEM_RULES_MINUTES.account.allowedEmailDomains] };
+      { domains: [...DEFAULT_SYSTEM_RULES.account.allowedEmailDomains] };
+    const branding = parseBrandingValue(brandingRecord?.value) ?? DEFAULT_SYSTEM_RULES.branding;
 
     const latestUpdate = getLatestDate(
       colorsRecord?.updatedAt,
       scheduleRecord?.updatedAt,
+      brandingRecord?.updatedAt,
       emailDomainsRecord?.updatedAt,
     );
 
-    const result = mapToSerializable(schedule, colors, emailDomains);
+  const result = mapToSerializable(schedule, colors, emailDomains, branding);
 
     if (latestUpdate) {
       result.updatedAt = latestUpdate.toISOString();
@@ -86,14 +111,14 @@ export async function getAllowedEmailDomains(): Promise<string[]> {
 
     const parsed =
       parseEmailDomainsValue(record?.value) ??
-      ({ domains: [...DEFAULT_SYSTEM_RULES_MINUTES.account.allowedEmailDomains] } as EmailDomainRuleValues);
+      ({ domains: [...DEFAULT_SYSTEM_RULES.account.allowedEmailDomains] } as EmailDomainRuleValues);
 
     return [...parsed.domains];
   } catch {
     console.warn(
       "[system-rules] Database indisponível durante a leitura dos domínios permitidos. Utilizando padrões.",
     );
-    return [...DEFAULT_SYSTEM_RULES_MINUTES.account.allowedEmailDomains];
+    return [...DEFAULT_SYSTEM_RULES.account.allowedEmailDomains];
   }
 }
 
@@ -101,6 +126,7 @@ function mapToSerializable(
   schedule: ScheduleRuleMinutes,
   colors: ColorRuleValues,
   emailDomains: EmailDomainRuleValues,
+  branding: BrandingRuleValues,
 ): SerializableSystemRules {
   const periods = PERIOD_IDS.reduce((accumulator, period) => {
     const persisted = schedule.periods[period] ?? DEFAULT_PERIOD_RULES_MINUTES[period];
@@ -118,12 +144,46 @@ function mapToSerializable(
     return accumulator;
   }, {} as SerializableSystemRules["periods"]);
 
+  const academicPeriod = schedule.academicPeriod ?? DEFAULT_SYSTEM_RULES.schedule.academicPeriod;
+
   return {
     primaryColor: colors.primaryColor,
     secondaryColor: colors.secondaryColor,
     accentColor: colors.accentColor,
+    successColor: colors.successColor,
+    warningColor: colors.warningColor,
+    infoColor: colors.infoColor,
+    dangerColor: colors.dangerColor,
+    timeZone: schedule.timeZone,
+    preventConcurrentTeacherReservations: Boolean(
+      schedule.preventConcurrentTeacherReservations,
+    ),
+    nonTeachingDays: schedule.nonTeachingDays.map((rule, index) => {
+      if (rule.kind === "weekday") {
+        return {
+          id: rule.id ?? `non-teaching-${index}`,
+          kind: "weekday" as const,
+          weekDay: rule.weekDay ?? 0,
+          description: rule.description ?? undefined,
+        } satisfies NonTeachingDayRule;
+      }
+
+      return {
+        id: rule.id ?? `non-teaching-${index}`,
+        kind: "specific-date" as const,
+        date: rule.date ?? "1970-01-01",
+        description: rule.description ?? undefined,
+        repeatsAnnually: rule.repeatsAnnually,
+      } satisfies NonTeachingDayRule;
+    }),
+    branding: { logoUrl: branding.logoUrl, institutionName: branding.institutionName },
     periods,
     allowedEmailDomains: [...emailDomains.domains],
+    academicPeriod: {
+      label: academicPeriod.label,
+      durationWeeks: academicPeriod.durationWeeks,
+      description: academicPeriod.description ?? undefined,
+    },
   };
 }
 
@@ -138,6 +198,10 @@ function parseColorsValue(
   const primaryColor = record.primaryColor;
   const secondaryColor = record.secondaryColor;
   const accentColor = record.accentColor;
+  const successColor = record.successColor;
+  const warningColor = record.warningColor;
+  const infoColor = record.infoColor;
+  const dangerColor = record.dangerColor;
 
   if (
     typeof primaryColor === "string" &&
@@ -148,6 +212,13 @@ function parseColorsValue(
       primaryColor,
       secondaryColor,
       accentColor,
+      successColor:
+        typeof successColor === "string" ? successColor : DEFAULT_SYSTEM_RULES.colors.successColor,
+      warningColor:
+        typeof warningColor === "string" ? warningColor : DEFAULT_SYSTEM_RULES.colors.warningColor,
+      infoColor: typeof infoColor === "string" ? infoColor : DEFAULT_SYSTEM_RULES.colors.infoColor,
+      dangerColor:
+        typeof dangerColor === "string" ? dangerColor : DEFAULT_SYSTEM_RULES.colors.dangerColor,
     };
   }
 
@@ -189,6 +260,17 @@ function parseScheduleValue(
 
   const record = value as Record<string, unknown>;
   const periods = record.periods;
+  const timeZone = typeof record.timeZone === "string" ? record.timeZone : DEFAULT_SYSTEM_RULES.schedule.timeZone;
+  const preventConcurrentTeacherReservations =
+    typeof record.preventConcurrentTeacherReservations === "boolean"
+      ? record.preventConcurrentTeacherReservations
+      : DEFAULT_SYSTEM_RULES.schedule.preventConcurrentTeacherReservations ?? false;
+  const nonTeachingDays = Array.isArray(record.nonTeachingDays)
+    ? record.nonTeachingDays
+        .map((entry) => parseNonTeachingDay(entry))
+        .filter((rule): rule is NonTeachingDayRuleMinutes => rule !== null)
+    : [];
+  const academicPeriod = parseAcademicPeriodValue(record.academicPeriod) ?? DEFAULT_SYSTEM_RULES.schedule.academicPeriod;
 
   if (!periods || typeof periods !== "object") {
     return null;
@@ -201,7 +283,50 @@ function parseScheduleValue(
     parsed[period] = parsePeriodValue(raw, DEFAULT_PERIOD_RULES_MINUTES[period]);
   }
 
-  return { periods: parsed };
+  return {
+    timeZone,
+    periods: parsed,
+    nonTeachingDays,
+    academicPeriod,
+    preventConcurrentTeacherReservations,
+  };
+}
+
+function parseNonTeachingDay(value: unknown): NonTeachingDayRuleMinutes | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const kind = record.kind;
+
+  if (kind === "weekday") {
+    const weekDay = record.weekDay;
+    if (typeof weekDay === "number" && Number.isInteger(weekDay) && weekDay >= 0 && weekDay <= 6) {
+      return {
+        kind: "weekday",
+        weekDay,
+        id: typeof record.id === "string" ? record.id : undefined,
+        description: typeof record.description === "string" ? record.description : undefined,
+      };
+    }
+    return null;
+  }
+
+  const date = record.date;
+
+  if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return null;
+  }
+
+  return {
+    kind: "specific-date",
+    date,
+    id: typeof record.id === "string" ? record.id : undefined,
+    description: typeof record.description === "string" ? record.description : undefined,
+    repeatsAnnually:
+      typeof record.repeatsAnnually === "boolean" ? record.repeatsAnnually : undefined,
+  };
 }
 
 function parsePeriodValue(
@@ -259,6 +384,28 @@ function parseIntervalValue(value: unknown): PeriodRuleMinutes["intervals"][numb
   };
 }
 
+function parseAcademicPeriodValue(value: unknown): AcademicPeriodRule | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const rawLabel = typeof record.label === "string" ? record.label.trim() : "";
+  const rawDuration = record.durationWeeks;
+
+  if (!rawLabel || typeof rawDuration !== "number" || !Number.isInteger(rawDuration) || rawDuration <= 0) {
+    return null;
+  }
+
+  const description = typeof record.description === "string" ? record.description : undefined;
+
+  return {
+    label: rawLabel,
+    durationWeeks: rawDuration,
+    description,
+  };
+}
+
 function coercePositiveInteger(value: unknown, allowZero = false): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return null;
@@ -285,4 +432,19 @@ function getLatestDate(...dates: Array<Date | undefined>): Date | null {
   }
 
   return new Date(Math.max(...timestamps));
+}
+
+function parseBrandingValue(value: Prisma.JsonValue | null | undefined): BrandingRuleValues | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const logoUrl = typeof record.logoUrl === "string" ? record.logoUrl : null;
+  const institutionName =
+    typeof record.institutionName === "string" && record.institutionName.trim().length > 0
+      ? record.institutionName.trim()
+      : DEFAULT_SYSTEM_RULES.branding.institutionName;
+
+  return { logoUrl, institutionName };
 }
