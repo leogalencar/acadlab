@@ -18,8 +18,6 @@ interface GetSoftwareCatalogOptions {
   suppliers: string[];
   updatedFrom?: Date;
   updatedTo?: Date;
-  createdFrom?: Date;
-  createdTo?: Date;
   sorting: SoftwareSortingState;
   pagination: { page: number; perPage: number };
 }
@@ -61,8 +59,6 @@ export async function getSoftwareCatalog({
   suppliers,
   updatedFrom,
   updatedTo,
-  createdFrom,
-  createdTo,
   sorting,
   pagination,
 }: GetSoftwareCatalogOptions = DEFAULT_GET_SOFTWARE_CATALOG_OPTIONS): Promise<SoftwareCatalogResult> {
@@ -91,17 +87,6 @@ export async function getSoftwareCatalog({
   }
   if (Object.keys(updatedFilter).length > 0) {
     conditions.push({ updatedAt: updatedFilter });
-  }
-
-  const createdFilter: Prisma.DateTimeFilter = {};
-  if (createdFrom) {
-    createdFilter.gte = createdFrom;
-  }
-  if (createdTo) {
-    createdFilter.lte = createdTo;
-  }
-  if (Object.keys(createdFilter).length > 0) {
-    conditions.push({ createdAt: createdFilter });
   }
 
   const where = conditions.length > 0 ? { AND: conditions } : undefined;
@@ -168,8 +153,6 @@ export function buildSoftwareFiltersState(
   suppliers: string[];
   updatedFrom?: Date;
   updatedTo?: Date;
-  createdFrom?: Date;
-  createdTo?: Date;
   sorting: SoftwareSortingState;
   pagination: SoftwarePaginationState;
 } {
@@ -177,8 +160,6 @@ export function buildSoftwareFiltersState(
   const suppliersRaw = params["supplier"];
   const updatedFromRaw = getFirst(params["updatedFrom"]);
   const updatedToRaw = getFirst(params["updatedTo"]);
-  const createdFromRaw = getFirst(params["createdFrom"]);
-  const createdToRaw = getFirst(params["createdTo"]);
   const sortByRaw = getFirst(params["sortBy"]);
   const sortOrderRaw = getFirst(params["sortOrder"]);
   const pageRaw = getFirst(params["page"]);
@@ -188,17 +169,10 @@ export function buildSoftwareFiltersState(
   const suppliers = normalizeToArray(suppliersRaw).filter(Boolean);
   let updatedFrom = parseDate(updatedFromRaw);
   let updatedTo = parseDate(updatedToRaw);
-  let createdFrom = parseDate(createdFromRaw);
-  let createdTo = parseDate(createdToRaw);
 
   if (updatedFrom && updatedTo && updatedFrom > updatedTo) {
     updatedFrom = undefined;
     updatedTo = undefined;
-  }
-
-  if (createdFrom && createdTo && createdFrom > createdTo) {
-    createdFrom = undefined;
-    createdTo = undefined;
   }
 
   const sortBy = SOFTWARE_SORT_FIELDS.includes(sortByRaw as SoftwareSortField)
@@ -214,8 +188,6 @@ export function buildSoftwareFiltersState(
     suppliers,
     updatedFrom: updatedFromRaw ?? undefined,
     updatedTo: updatedToRaw ?? undefined,
-    createdFrom: createdFromRaw ?? undefined,
-    createdTo: createdToRaw ?? undefined,
   };
 
   const sorting: SoftwareSortingState = { sortBy, sortOrder };
@@ -227,8 +199,6 @@ export function buildSoftwareFiltersState(
     suppliers,
     updatedFrom,
     updatedTo,
-    createdFrom,
-    createdTo,
     sorting,
     pagination,
   };

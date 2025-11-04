@@ -63,24 +63,6 @@ export function SoftwareFilters({ filters, sorting, supplierOptions, perPage }: 
                 defaultValue={filters.updatedTo ?? ""}
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="createdFrom">Criado a partir de</Label>
-              <Input
-                id="createdFrom"
-                name="createdFrom"
-                type="date"
-                defaultValue={filters.createdFrom ?? ""}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="createdTo">Criado até</Label>
-              <Input
-                id="createdTo"
-                name="createdTo"
-                type="date"
-                defaultValue={filters.createdTo ?? ""}
-              />
-            </div>
           </div>
 
           <div className="space-y-3">

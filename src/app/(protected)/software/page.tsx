@@ -39,8 +39,6 @@ export default async function SoftwarePage({
     suppliers,
     updatedFrom,
     updatedTo,
-    createdFrom,
-    createdTo,
     sorting,
     pagination,
   } =
@@ -51,8 +49,6 @@ export default async function SoftwarePage({
     suppliers,
     updatedFrom,
     updatedTo,
-    createdFrom,
-    createdTo,
     sorting,
     pagination,
   });

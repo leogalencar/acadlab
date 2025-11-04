@@ -14,8 +14,6 @@ export interface SoftwareFiltersState {
   suppliers: string[];
   updatedFrom?: string;
   updatedTo?: string;
-  createdFrom?: string;
-  createdTo?: string;
 }
 
 export type SoftwareSortField = "name" | "version" | "updatedAt";
