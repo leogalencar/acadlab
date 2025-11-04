@@ -61,6 +61,15 @@ export function useServerActionToast<TState extends ActionState, TPayload>(
   }, [isPending, push, dismiss, options?.messages?.pending]);
 
   useEffect(() => {
+    return () => {
+      if (pendingToastId.current) {
+        dismiss(pendingToastId.current);
+        pendingToastId.current = null;
+      }
+    };
+  }, [dismiss]);
+
+  useEffect(() => {
     if (state.status === lastStatusRef.current) {
       return;
     }
