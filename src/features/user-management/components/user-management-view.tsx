@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { ConfirmationDialog } from "@/features/shared/components/confirmation-dialog";
 import { PAGE_SIZE_OPTIONS } from "@/features/shared/table";
 import {
@@ -195,7 +195,7 @@ export function UserManagementView({
                     </span>
                   </td>
                   <td className="p-4 text-xs text-muted-foreground">
-                    {new Date(user.updatedAt).toLocaleDateString()}
+                    {formatDate(user.updatedAt)}
                   </td>
                 </tr>
               ))
@@ -606,11 +606,11 @@ function UserDetails({ user }: { user: SerializableUser }) {
         </div>
         <div className="grid gap-1">
           <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Criado em</span>
-          <span>{new Date(user.createdAt).toLocaleDateString()}</span>
+          <span>{formatDate(user.createdAt)}</span>
         </div>
         <div className="grid gap-1">
           <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Atualizado em</span>
-          <span>{new Date(user.updatedAt).toLocaleDateString()}</span>
+          <span>{formatDate(user.updatedAt)}</span>
         </div>
       </div>
     </section>

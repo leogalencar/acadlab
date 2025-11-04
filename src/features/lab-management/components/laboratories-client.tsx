@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import type { LaboratoryPaginationState, LaboratorySortingState, LaboratorySortField, SerializableLaboratory } from "@/features/lab-management/types";
 import { idleActionState, type ActionState } from "@/features/shared/types";
 import { PAGE_SIZE_OPTIONS } from "@/features/shared/table";
@@ -182,7 +182,7 @@ export function LaboratoriesClient({
               : "Nenhum software associado"}
           </td>
           <td className="p-4 text-xs text-muted-foreground">
-            {new Date(laboratory.updatedAt).toLocaleDateString()}
+            {formatDate(laboratory.updatedAt)}
           </td>
         </tr>
       );
@@ -784,7 +784,7 @@ function SoftwareAssociationSection({ laboratory, availableSoftware, canManage, 
                 <p className="text-xs text-muted-foreground">
                   {item.installedByName ? `Instalado por ${item.installedByName}` : "Instalação registrada"}
                   {" • "}
-                  {new Date(item.installedAt).toLocaleDateString()}
+                  {formatDate(item.installedAt)}
                 </p>
               </div>
             ))
@@ -887,7 +887,7 @@ function SoftwareAssociationSection({ laboratory, availableSoftware, canManage, 
                     ? `Instalado por ${item.installedByName}`
                     : "Instalação registrada"}
                   {" • "}
-                  {new Date(item.installedAt).toLocaleDateString()}
+                  {formatDate(item.installedAt)}
                 </p>
               </div>
               <Button

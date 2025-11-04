@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { ConfirmationDialog } from "@/features/shared/components/confirmation-dialog";
 import { idleActionState, type ActionState } from "@/features/shared/types";
 import { PAGE_SIZE_OPTIONS } from "@/features/shared/table";
@@ -150,7 +150,7 @@ export function SoftwareManagementClient({ software, sorting, pagination }: Soft
                   <td className="p-4 text-muted-foreground">{item.version}</td>
                   <td className="p-4 text-muted-foreground">{item.supplier ?? "—"}</td>
                   <td className="p-4 text-xs text-muted-foreground">
-                    {new Date(item.updatedAt).toLocaleDateString()}
+                    {formatDate(item.updatedAt)}
                   </td>
                 </tr>
               ))
