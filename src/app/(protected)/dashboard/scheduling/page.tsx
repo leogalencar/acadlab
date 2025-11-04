@@ -5,14 +5,17 @@ import { Role } from "@prisma/client";
 
 import { auth } from "@/auth";
 import { SchedulingBoard } from "@/features/scheduling/components/scheduling-board";
+import { SchedulingSearch } from "@/features/scheduling/components/scheduling-search";
 import {
-  getActiveLaboratoryOptions,
+  getActiveLaboratoryOption,
   getSchedulingBoardData,
   getProfessorOptions,
   normalizeDateParam,
+  searchLaboratoriesForScheduling,
 } from "@/features/scheduling/server/queries";
 import type { SearchParamsLike } from "@/features/shared/search-params";
 import { resolveSearchParams } from "@/features/shared/search-params";
+import { getAllSoftwareOptions } from "@/features/software-management/server/queries";
 
 export const metadata: Metadata = {
   title: "Agenda de laboratórios",
@@ -21,6 +24,9 @@ export const metadata: Metadata = {
 type SchedulingSearchParams = {
   laboratoryId?: string | string[];
   date?: string | string[];
+  time?: string | string[];
+  software?: string | string[];
+  capacity?: string | string[];
 };
 
 export default async function SchedulingPage({
@@ -35,51 +41,109 @@ export default async function SchedulingPage({
   }
 
   const resolvedParams = await resolveSearchParams<SchedulingSearchParams>(searchParams);
-  const laboratories = await getActiveLaboratoryOptions();
 
-  if (laboratories.length === 0) {
-    return (
-      <div className="rounded-lg border border-border/60 bg-muted/40 p-8 text-center">
-        <h1 className="text-2xl font-semibold text-foreground">Agenda de laboratórios</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Nenhum laboratório ativo foi encontrado. Cadastre um laboratório para iniciar os agendamentos.
-        </p>
-      </div>
-    );
-  }
+  const normalizeSingleParam = (value?: string | string[]): string | undefined => {
+    const entry = Array.isArray(value) ? value[0] : value;
+    if (!entry) {
+      return undefined;
+    }
+    const trimmed = entry.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  };
 
-  const requestedLaboratoryId = Array.isArray(resolvedParams?.laboratoryId)
-    ? resolvedParams.laboratoryId[0]
-    : resolvedParams?.laboratoryId;
-  const selectedLaboratoryId = laboratories.some((lab) => lab.id === requestedLaboratoryId)
-    ? requestedLaboratoryId!
-    : laboratories[0]!.id;
+  const normalizeMultiParam = (value?: string | string[]): string[] => {
+    if (!value) {
+      return [];
+    }
+    const entries = Array.isArray(value) ? value : [value];
+    return entries
+      .map((entry) => entry?.trim())
+      .filter((entry): entry is string => Boolean(entry && entry.length > 0));
+  };
 
   const selectedDate = normalizeDateParam(resolvedParams?.date);
+  const selectedTime = normalizeSingleParam(resolvedParams?.time);
+  const selectedSoftwareIds = normalizeMultiParam(resolvedParams?.software);
+  const minimumCapacity = (() => {
+    const entry = normalizeSingleParam(resolvedParams?.capacity);
+    if (!entry) {
+      return undefined;
+    }
+    const parsed = Number.parseInt(entry, 10);
+    if (Number.isNaN(parsed) || parsed <= 0) {
+      return undefined;
+    }
+    return parsed;
+  })();
+  const requestedLaboratoryId = normalizeSingleParam(resolvedParams?.laboratoryId);
+
   const now = new Date();
 
-  const snapshot = await getSchedulingBoardData({
-    laboratoryId: selectedLaboratoryId,
-    date: selectedDate,
-    now,
-  });
+  const [searchResult, softwareCatalog, selectedLaboratory] = await Promise.all([
+    searchLaboratoriesForScheduling({
+      date: selectedDate,
+      time: selectedTime,
+      softwareIds: selectedSoftwareIds,
+      minimumCapacity,
+      now,
+    }),
+    getAllSoftwareOptions(),
+    requestedLaboratoryId
+      ? getActiveLaboratoryOption(requestedLaboratoryId)
+      : Promise.resolve(null),
+  ]);
+
+  let boardSnapshot: Awaited<ReturnType<typeof getSchedulingBoardData>> | null = null;
+
+  if (selectedLaboratory) {
+    boardSnapshot = await getSchedulingBoardData({
+      laboratoryId: selectedLaboratory.id,
+      date: selectedDate,
+      now,
+    });
+  }
 
   let teacherOptions: Awaited<ReturnType<typeof getProfessorOptions>> = [];
-  if (session.user.role === Role.ADMIN || session.user.role === Role.TECHNICIAN) {
+  if (
+    boardSnapshot &&
+    (session.user.role === Role.ADMIN || session.user.role === Role.TECHNICIAN)
+  ) {
     teacherOptions = await getProfessorOptions();
   }
 
   return (
-    <SchedulingBoard
-      laboratories={laboratories}
-      selectedLaboratoryId={selectedLaboratoryId}
-      selectedDate={selectedDate}
-      schedule={snapshot.schedule}
-      actorRole={session.user.role}
-      timeZone={snapshot.timeZone}
-      nonTeachingRules={snapshot.nonTeachingRules}
-      teacherOptions={teacherOptions}
-      classPeriod={snapshot.classPeriod}
-    />
+    <div className="space-y-8">
+      <SchedulingSearch
+        date={selectedDate}
+        time={selectedTime}
+        timeZone={searchResult.timeZone}
+        selectedSoftwareIds={selectedSoftwareIds}
+        softwareOptions={softwareCatalog}
+        results={searchResult.results}
+        selectedLaboratoryId={selectedLaboratory?.id}
+        minimumCapacity={minimumCapacity}
+      />
+
+      {selectedLaboratory && boardSnapshot ? (
+        <SchedulingBoard
+          laboratory={selectedLaboratory}
+          selectedDate={selectedDate}
+          schedule={boardSnapshot.schedule}
+          actorRole={session.user.role}
+          timeZone={boardSnapshot.timeZone}
+          nonTeachingRules={boardSnapshot.nonTeachingRules}
+          teacherOptions={teacherOptions}
+          classPeriod={boardSnapshot.classPeriod}
+        />
+      ) : requestedLaboratoryId ? (
+        <div className="rounded-lg border border-border/60 bg-muted/40 p-6 text-sm text-muted-foreground">
+          O laboratório selecionado não está disponível ou não foi encontrado. Utilize a busca acima para escolher outro ambiente.
+        </div>
+      ) : (
+        <div className="rounded-lg border border-border/60 bg-muted/40 p-6 text-sm text-muted-foreground">
+          Pesquise e selecione um laboratório para visualizar o calendário de reservas.
+        </div>
+      )}
+    </div>
   );
 }

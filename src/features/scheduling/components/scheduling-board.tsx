@@ -1,15 +1,6 @@
 "use client";
 
-import {
-  useActionState,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useTransition,
-  type ChangeEvent,
-} from "react";
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Role, ReservationStatus } from "@prisma/client";
@@ -44,8 +35,7 @@ import { findNonTeachingRuleForDate, formatIsoDateInTimeZone } from "@/features/
 import { cn } from "@/lib/utils";
 
 interface SchedulingBoardProps {
-  laboratories: SerializableLaboratoryOption[];
-  selectedLaboratoryId: string;
+  laboratory: SerializableLaboratoryOption;
   selectedDate: string;
   schedule: DailySchedule;
   actorRole: Role;
@@ -58,8 +48,7 @@ interface SchedulingBoardProps {
 const OCCURRENCE_OPTIONS = Array.from({ length: 12 }, (_, index) => index + 1);
 
 export function SchedulingBoard({
-  laboratories,
-  selectedLaboratoryId,
+  laboratory,
   selectedDate,
   schedule,
   actorRole,
@@ -78,6 +67,8 @@ export function SchedulingBoard({
     idleActionState,
   );
   const formRef = useRef<HTMLFormElement | null>(null);
+  const selectedLaboratoryId = laboratory.id;
+  const selectedLaboratoryName = laboratory.name;
 
   const timeFormatter = useMemo(
     () =>
@@ -154,22 +145,21 @@ export function SchedulingBoard({
     [nonTeachingRules, timeZone],
   );
 
-  const handleLaboratoryChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    const nextLaboratoryId = event.target.value;
-    const params = new URLSearchParams(searchParams?.toString());
-    params.set("laboratoryId", nextLaboratoryId);
-    startTransition(() => {
-      router.push(`/dashboard/scheduling?${params.toString()}`);
-    });
-  };
-
   const handleDateSelect = (nextDate: string) => {
     const params = new URLSearchParams(searchParams?.toString());
     params.set("date", nextDate);
     startTransition(() => {
-      router.push(`/dashboard/scheduling?${params.toString()}`);
+      router.push(`/dashboard/scheduling?${params.toString()}`, { scroll: false });
     });
   };
+
+  const handleChangeLaboratory = useCallback(() => {
+    const params = new URLSearchParams(searchParams?.toString());
+    params.delete("laboratoryId");
+    startTransition(() => {
+      router.push(`/dashboard/scheduling?${params.toString()}`, { scroll: false });
+    });
+  }, [router, searchParams, startTransition]);
 
   const toggleSlotSelection = (slot: ReservationSlot) => {
     if (slot.isOccupied || slot.isPast || schedule.isNonTeachingDay) {
@@ -227,10 +217,6 @@ export function SchedulingBoard({
       .map((slotId) => findSlot(schedule, slotId))
       .filter((slot): slot is ReservationSlot => Boolean(slot));
   }, [schedule, selectedSlotIds]);
-
-  const selectedLaboratoryName = useMemo(() => {
-    return laboratories.find((lab) => lab.id === selectedLaboratoryId)?.name ?? "";
-  }, [laboratories, selectedLaboratoryId]);
 
   useEffect(() => {
     if (selectedSlotIds.length === 0) {
@@ -294,24 +280,27 @@ export function SchedulingBoard({
 
       <div className="grid gap-8 lg:grid-cols-[320px,1fr]">
         <aside className="space-y-6">
-          <div className="space-y-2">
-            <label htmlFor="laboratoryId" className="text-sm font-medium text-foreground">
-              Laboratório
-            </label>
-            <select
-              id="laboratoryId"
-              name="laboratoryId"
-              value={selectedLaboratoryId}
-              onChange={handleLaboratoryChange}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
-              disabled={isNavigating || laboratories.length === 0}
-            >
-              {laboratories.map((laboratory) => (
-                <option key={laboratory.id} value={laboratory.id}>
-                  {laboratory.name}
-                </option>
-              ))}
-            </select>
+          <div className="space-y-2 rounded-lg border border-border/60 bg-muted/40 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Laboratório selecionado
+                </p>
+                <p className="text-sm font-semibold text-foreground">{selectedLaboratoryName}</p>
+                <p className="text-xs text-muted-foreground">
+                  Retorne à busca para selecionar um laboratório diferente.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleChangeLaboratory}
+                disabled={isNavigating}
+              >
+                Alterar
+              </Button>
+            </div>
           </div>
 
           <div className="space-y-3">

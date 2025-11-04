@@ -5,6 +5,22 @@ import "./globals.css";
 import { getSystemRules } from "@/features/system-rules/server/queries";
 import { buildPaletteCssVariables } from "@/features/system-rules/utils";
 
+const THEME_INITIALIZATION_SCRIPT = `
+(() => {
+  try {
+    const storageKey = "theme";
+    const storedTheme = window.localStorage.getItem(storageKey);
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const theme = storedTheme === "dark" || (storedTheme !== "light" && prefersDark) ? "dark" : "light";
+    const root = document.documentElement;
+    root.classList.toggle("dark", theme === "dark");
+    root.style.colorScheme = theme;
+  } catch {
+    // Intentionally ignore errors accessing localStorage
+  }
+})();
+`;
+
 export async function generateMetadata(): Promise<Metadata> {
   const rules = await getSystemRules();
   const brandName = rules.branding.institutionName;
@@ -42,7 +58,10 @@ export default async function RootLayout({
   }) as CSSProperties;
 
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INITIALIZATION_SCRIPT }} />
+      </head>
       <body
         className="min-h-screen bg-background text-foreground antialiased"
         style={paletteStyles}

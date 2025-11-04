@@ -8,6 +8,24 @@ export interface SerializableLaboratoryOption {
   name: string;
 }
 
+export interface SchedulingLaboratorySearchResult {
+  id: string;
+  name: string;
+  capacity: number;
+  software: Array<{
+    id: string;
+    name: string;
+    version: string;
+  }>;
+  availableSlots: Array<{
+    startTime: string;
+    endTime: string;
+    periodId: PeriodId;
+    classIndex: number;
+  }>;
+  totalMatchingSlots: number;
+}
+
 export interface SerializableReservationSummary {
   id: string;
   laboratoryId: string;

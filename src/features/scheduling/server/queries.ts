@@ -19,10 +19,12 @@ import type {
   ReservationHistoryEntry,
   SchedulingOverviewData,
   SerializableLaboratoryOption,
+  SchedulingLaboratorySearchResult,
   SerializableReservationSummary,
   SerializableUserOption,
 } from "@/features/scheduling/types";
 import type { NonTeachingDayRule, SerializableSystemRules } from "@/features/system-rules/types";
+import { parseTimeToMinutes } from "@/features/system-rules/utils";
 
 interface GetSchedulingBoardOptions {
   laboratoryId: string;
@@ -85,6 +87,218 @@ export async function getActiveLaboratoryOptions(): Promise<SerializableLaborato
     id: laboratory.id,
     name: laboratory.name,
   }));
+}
+
+export async function getActiveLaboratoryOption(id: string): Promise<SerializableLaboratoryOption | null> {
+  const laboratory = await prisma.laboratory.findFirst({
+    where: {
+      id,
+      status: "ACTIVE",
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+
+  if (!laboratory) {
+    return null;
+  }
+
+  return {
+    id: laboratory.id,
+    name: laboratory.name,
+  };
+}
+
+interface SearchLaboratoriesForSchedulingOptions {
+  date: string;
+  time?: string;
+  softwareIds: string[];
+  minimumCapacity?: number;
+  now: Date;
+}
+
+export async function searchLaboratoriesForScheduling({
+  date,
+  time,
+  softwareIds,
+  minimumCapacity,
+  now,
+}: SearchLaboratoriesForSchedulingOptions): Promise<{
+  timeZone: string;
+  results: SchedulingLaboratorySearchResult[];
+}> {
+  const normalizedDate = normalizeDateParam(date);
+  const [systemRules, laboratories] = await Promise.all([
+    getSystemRules(),
+    prisma.laboratory.findMany({
+      where: {
+        status: "ACTIVE",
+        ...(minimumCapacity ? { capacity: { gte: minimumCapacity } } : {}),
+        ...(softwareIds.length > 0
+          ? {
+              AND: softwareIds.map((softwareId) => ({
+                softwareAssociations: { some: { softwareId } },
+              })),
+            }
+          : {}),
+      },
+      orderBy: { name: "asc" },
+      include: {
+        softwareAssociations: {
+          include: {
+            software: {
+              select: {
+                id: true,
+                name: true,
+                version: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+  ]);
+
+  if (laboratories.length === 0) {
+    return { timeZone: systemRules.timeZone, results: [] };
+  }
+
+  const nonTeachingRule = findNonTeachingRuleForDate(
+    normalizedDate,
+    systemRules.nonTeachingDays,
+    systemRules.timeZone,
+  );
+
+  if (nonTeachingRule) {
+    return { timeZone: systemRules.timeZone, results: [] };
+  }
+
+  const laboratoryIds = laboratories.map((laboratory) => laboratory.id);
+  const startOfDay = getStartOfDayInTimeZone(normalizedDate, systemRules.timeZone);
+  const endOfDay = getEndOfDayInTimeZone(normalizedDate, systemRules.timeZone);
+
+  const reservations = await prisma.reservation.findMany({
+    where: {
+      laboratoryId: { in: laboratoryIds },
+      startTime: { lt: endOfDay },
+      endTime: { gt: startOfDay },
+      status: { not: ReservationStatus.CANCELLED },
+    },
+    orderBy: { startTime: "asc" },
+    select: {
+      id: true,
+      laboratoryId: true,
+      startTime: true,
+      endTime: true,
+      status: true,
+      subject: true,
+      recurrenceId: true,
+      createdBy: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  });
+
+  const reservationsByLaboratory = new Map<string, SerializableReservationSummary[]>();
+  reservations.forEach((reservation) => {
+    const serialized: SerializableReservationSummary = {
+      id: reservation.id,
+      laboratoryId: reservation.laboratoryId,
+      startTime: reservation.startTime.toISOString(),
+      endTime: reservation.endTime.toISOString(),
+      status: reservation.status,
+      subject: reservation.subject,
+      recurrenceId: reservation.recurrenceId,
+      createdBy: {
+        id: reservation.createdBy.id,
+        name: reservation.createdBy.name,
+      },
+    };
+
+    if (!reservationsByLaboratory.has(reservation.laboratoryId)) {
+      reservationsByLaboratory.set(reservation.laboratoryId, []);
+    }
+
+    reservationsByLaboratory.get(reservation.laboratoryId)!.push(serialized);
+  });
+
+  let requestedMinutes: number | undefined;
+  if (time) {
+    try {
+      requestedMinutes = parseTimeToMinutes(time);
+    } catch {
+      requestedMinutes = undefined;
+    }
+  }
+
+  const results: SchedulingLaboratorySearchResult[] = [];
+
+  laboratories.forEach((laboratory) => {
+    const laboratoryReservations = reservationsByLaboratory.get(laboratory.id) ?? [];
+    const schedule = buildDailySchedule({
+      date: normalizedDate,
+      systemRules,
+      reservations: laboratoryReservations,
+      now,
+      nonTeachingRule: null,
+    });
+
+    if (schedule.isNonTeachingDay) {
+      return;
+    }
+
+    const availableSlots = schedule.periods.flatMap((period) =>
+      period.slots
+        .filter((slot) => !slot.isOccupied && !slot.isPast)
+        .map((slot) => ({
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          periodId: period.id,
+          classIndex: slot.classIndex,
+        })),
+    );
+
+    if (availableSlots.length === 0) {
+      return;
+    }
+
+    let relevantSlots = availableSlots;
+
+    if (requestedMinutes !== undefined) {
+      relevantSlots = availableSlots.filter((slot) => {
+        const startMinutes = getMinutesSinceStartOfDay(slot.startTime, systemRules.timeZone);
+        return startMinutes === requestedMinutes;
+      });
+
+      if (relevantSlots.length === 0) {
+        return;
+      }
+    }
+
+    relevantSlots.sort((left, right) => left.startTime.localeCompare(right.startTime));
+
+    results.push({
+      id: laboratory.id,
+      name: laboratory.name,
+      capacity: laboratory.capacity,
+      software: laboratory.softwareAssociations
+        .map((association) => ({
+          id: association.softwareId,
+          name: association.software.name,
+          version: association.software.version,
+        }))
+        .sort((left, right) => left.name.localeCompare(right.name)),
+      availableSlots: relevantSlots.slice(0, 3),
+      totalMatchingSlots: relevantSlots.length,
+    });
+  });
+
+  return { timeZone: systemRules.timeZone, results };
 }
 
 interface GetReservationsForDayOptions {
@@ -475,6 +689,22 @@ function extractAcademicPeriodSummary(systemRules: SerializableSystemRules): Aca
     durationWeeks: rawConfig.durationWeeks,
     description: rawConfig.description ?? undefined,
   };
+}
+
+function getMinutesSinceStartOfDay(isoDate: string, timeZone: string): number {
+  const date = new Date(isoDate);
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+  const parts = formatter.formatToParts(date);
+  const hours = Number.parseInt(parts.find((part) => part.type === "hour")?.value ?? "0", 10);
+  const minutes = Number.parseInt(parts.find((part) => part.type === "minute")?.value ?? "0", 10);
+
+  return hours * 60 + minutes;
 }
 
 function formatDate(date: Date): string {

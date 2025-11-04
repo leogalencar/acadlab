@@ -23,6 +23,7 @@ import type { LaboratoryPaginationState, LaboratorySortingState, LaboratorySortF
 import { idleActionState, type ActionState } from "@/features/shared/types";
 import { PAGE_SIZE_OPTIONS } from "@/features/shared/table";
 import { ConfirmationDialog } from "@/features/shared/components/confirmation-dialog";
+import { MultiCombobox } from "@/features/shared/components/multi-combobox";
 import {
   assignSoftwareToLaboratoryAction,
   createLaboratoryAction,
@@ -650,6 +651,11 @@ function SoftwareSelectionField({
 }) {
   const hasSoftwareOptions = softwareCatalog.length > 0;
   const quickCreateVisible = quickCreate?.open ?? false;
+  const softwareOptions = softwareCatalog.map((software) => ({
+    value: software.id,
+    label: `${software.name} • ${software.version}`,
+    description: software.supplier ? `Fornecedor: ${software.supplier}` : undefined,
+  }));
   let quickCreateSection: ReactNode = null;
 
   if (quickCreate) {
@@ -690,32 +696,13 @@ function SoftwareSelectionField({
       </div>
       {quickCreateSection}
       {hasSoftwareOptions ? (
-        <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-border/70 bg-muted/40 p-3 text-sm">
-          {softwareCatalog.map((software) => {
-            const checkboxId = `software-${software.id}`;
-
-            return (
-              <label key={software.id} htmlFor={checkboxId} className="flex items-start gap-3">
-                <input
-                  id={checkboxId}
-                  type="checkbox"
-                  name="softwareIds"
-                  value={software.id}
-                  form={formId}
-                  className="mt-1 h-4 w-4 rounded border border-input text-primary"
-                />
-                <span>
-                  <span className="block font-medium text-foreground">
-                    {software.name} • {software.version}
-                  </span>
-                  {software.supplier ? (
-                    <span className="block text-xs text-muted-foreground">Fornecedor: {software.supplier}</span>
-                  ) : null}
-                </span>
-              </label>
-            );
-          })}
-        </div>
+        <MultiCombobox
+          name="softwareIds"
+          form={formId}
+          options={softwareOptions}
+          placeholder="Selecione softwares a instalar"
+          searchPlaceholder="Pesquisar softwares..."
+        />
       ) : null}
     </fieldset>
   );
@@ -765,11 +752,18 @@ function SoftwareAssociationSection({ laboratory, availableSoftware, canManage, 
   const [removeFeedback, setRemoveFeedback] = useState<ActionState | null>(null);
   const [isRemoving, startRemoving] = useTransition();
   const [showQuickCreate, setShowQuickCreate] = useState(false);
+  const [selectedSoftwareId, setSelectedSoftwareId] = useState<string | null>(null);
   const assignFormRef = useRef<HTMLFormElement>(null);
+  const assignableSoftwareOptions = availableSoftware.map((software) => ({
+    value: software.id,
+    label: `${software.name} • ${software.version}`,
+    description: software.supplier ? `Fornecedor: ${software.supplier}` : undefined,
+  }));
 
   useEffect(() => {
     if (assignState.status === "success") {
       assignFormRef.current?.reset();
+      setSelectedSoftwareId(null);
       onRefresh();
     }
   }, [assignState.status, onRefresh]);
@@ -849,24 +843,27 @@ function SoftwareAssociationSection({ laboratory, availableSoftware, canManage, 
         <input type="hidden" name="laboratoryId" value={laboratory.id} />
         <div className="grid min-w-[220px] flex-1 gap-2">
           <Label htmlFor="software-select">Selecionar software</Label>
-          <select
-            id="software-select"
+          <MultiCombobox
             name="softwareId"
-            defaultValue=""
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            required
-          >
-            <option value="" disabled>
-              {availableSoftware.length > 0 ? "Escolha um software" : "Cadastre softwares para associar"}
-            </option>
-            {availableSoftware.map((software) => (
-              <option key={software.id} value={software.id}>
-                {software.name} • {software.version}
-              </option>
-            ))}
-          </select>
+            options={assignableSoftwareOptions}
+            value={selectedSoftwareId ? [selectedSoftwareId] : []}
+            onChange={(values) => {
+              const latest = values.length > 0 ? values[values.length - 1] : undefined;
+              setSelectedSoftwareId(latest ?? null);
+            }}
+            placeholder={availableSoftware.length > 0 ? "Pesquise e selecione um software" : "Nenhum software disponível"}
+            searchPlaceholder="Pesquisar softwares..."
+            disabled={availableSoftware.length === 0}
+          />
         </div>
-        <Button type="submit" disabled={isAssigning || availableSoftware.length === 0}>
+        <Button
+          type="submit"
+          disabled={
+            isAssigning ||
+            availableSoftware.length === 0 ||
+            !selectedSoftwareId
+          }
+        >
           {isAssigning ? "Associando..." : "Adicionar software"}
         </Button>
         {assignState.status === "error" ? (

@@ -49,12 +49,14 @@ export function AccountMenu({ userName }: AccountMenuProps) {
     const nextTheme = storedTheme === "dark" ? "dark" : "light";
     setTheme(nextTheme);
     document.documentElement.classList.toggle("dark", nextTheme === "dark");
+    document.documentElement.style.colorScheme = nextTheme;
   }, []);
 
   const toggleTheme = () => {
     setTheme((current) => {
       const next = current === "dark" ? "light" : "dark";
       document.documentElement.classList.toggle("dark", next === "dark");
+      document.documentElement.style.colorScheme = next;
       window.localStorage.setItem("theme", next);
       return next;
     });

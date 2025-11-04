@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { LaboratoryFiltersState, LaboratorySortingState } from "@/features/lab-management/types";
+import { MultiCombobox } from "@/features/shared/components/multi-combobox";
 import type { SerializableSoftware } from "@/features/software-management/types";
 
 interface LaboratoryFiltersProps {
@@ -23,6 +24,11 @@ const STATUS_LABELS: Record<LaboratoryStatus, string> = {
 export function LaboratoryFilters({ filters, sorting, softwareOptions, perPage }: LaboratoryFiltersProps) {
   const hasSoftwareOptions = softwareOptions.length > 0;
   const selectedStatuses = new Set(filters.statuses);
+  const softwareComboboxOptions = softwareOptions.map((software) => ({
+    value: software.id,
+    label: `${software.name} • ${software.version}`,
+    description: software.supplier ? `Fornecedor: ${software.supplier}` : undefined,
+  }));
 
   return (
     <Card>
@@ -103,37 +109,13 @@ export function LaboratoryFilters({ filters, sorting, softwareOptions, perPage }
           <div className="space-y-3">
             <Label>Softwares instalados</Label>
             {hasSoftwareOptions ? (
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {softwareOptions.map((software) => {
-                  const optionId = `software-${software.id}`;
-                  const isSelected = filters.softwareIds.includes(software.id);
-
-                  return (
-                    <label
-                      key={software.id}
-                      htmlFor={optionId}
-                      className="flex items-start gap-2 rounded-lg border border-border/70 bg-muted/30 p-3 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
-                    >
-                      <input
-                        id={optionId}
-                        name="software"
-                        type="checkbox"
-                        value={software.id}
-                        defaultChecked={isSelected}
-                        className="mt-1 size-4 rounded border border-input accent-primary"
-                      />
-                      <span className="flex flex-col">
-                        <span className="font-medium text-foreground">
-                          {software.name} • {software.version}
-                        </span>
-                        {software.supplier ? (
-                          <span className="text-xs">Fornecedor: {software.supplier}</span>
-                        ) : null}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
+              <MultiCombobox
+                name="software"
+                options={softwareComboboxOptions}
+                defaultValue={filters.softwareIds}
+                placeholder="Selecione softwares instalados"
+                searchPlaceholder="Pesquisar softwares..."
+              />
             ) : (
               <p className="text-sm text-muted-foreground">
                 Cadastre softwares para habilitar filtros por instalação.
