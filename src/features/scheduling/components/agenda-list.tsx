@@ -355,8 +355,8 @@ export function AgendaList({
                               key={reservation.id}
                               className="flex flex-col gap-2 rounded-md border border-border/60 bg-background/90 p-3 text-xs text-muted-foreground"
                             >
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="space-y-1">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div className="min-w-0 space-y-1">
                                   <p className="text-sm font-semibold text-foreground">
                                     {reservation.laboratory.name}
                                   </p>
@@ -379,12 +379,14 @@ export function AgendaList({
                                   ) : null}
                                 </div>
                                 {canCancel ? (
-                                  <CancelReservationButton
-                                    reservationId={reservation.id}
-                                    triggerVariant="ghost"
-                                    triggerSize="sm"
-                                    label="Cancelar"
-                                  />
+                                  <div className="flex shrink-0">
+                                    <CancelReservationButton
+                                      reservationId={reservation.id}
+                                      triggerVariant="ghost"
+                                      triggerSize="sm"
+                                      label="Cancelar"
+                                    />
+                                  </div>
                                 ) : null}
                               </div>
                               <div className="flex flex-wrap items-center gap-2">
