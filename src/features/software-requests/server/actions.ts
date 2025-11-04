@@ -8,6 +8,10 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { canManageSoftwareRequests } from "@/features/software-requests/types";
 import type { ActionState } from "@/features/shared/types";
+import {
+  notifyEntityAction,
+  notifySoftwareRequestStatusChange,
+} from "@/features/notifications/server/triggers";
 
 const notAuthenticated: ActionState = {
   status: "error",
@@ -90,6 +94,14 @@ export async function createSoftwareRequestAction(
     },
   });
 
+  await notifyEntityAction({
+    userId: session.user.id,
+    entity: "Solicitação de software",
+    entityName: `${parsed.data.softwareName} • ${parsed.data.softwareVersion}`,
+    href: "/software-requests",
+    type: "create",
+  });
+
   await revalidateSoftwareRequestRoutes();
 
   return { status: "success", message: "Solicitação registrada com sucesso." };
@@ -122,7 +134,13 @@ export async function updateSoftwareRequestStatusAction(
 
   const existing = await prisma.softwareRequest.findUnique({
     where: { id: parsed.data.requestId },
-    select: { id: true },
+    select: {
+      id: true,
+      requesterId: true,
+      softwareName: true,
+      softwareVersion: true,
+      laboratory: { select: { name: true } },
+    },
   });
 
   if (!existing) {
@@ -140,6 +158,29 @@ export async function updateSoftwareRequestStatusAction(
       reviewerId: isPending ? null : session.user.id,
       reviewedAt: isPending ? null : new Date(),
     },
+  });
+
+  const softwareLabel = existing.softwareVersion
+    ? `${existing.softwareName} • ${existing.softwareVersion}`
+    : existing.softwareName;
+
+  if (!isPending) {
+    await notifySoftwareRequestStatusChange({
+      userId: existing.requesterId,
+      softwareName: existing.softwareName,
+      status,
+      laboratoryName: existing.laboratory.name,
+      reviewerName: session.user.name ?? null,
+      notes: responseNotes ?? null,
+    });
+  }
+
+  await notifyEntityAction({
+    userId: session.user.id,
+    entity: "Solicitações de software",
+    entityName: softwareLabel,
+    href: "/software-requests",
+    type: "update",
   });
 
   await revalidateSoftwareRequestRoutes();

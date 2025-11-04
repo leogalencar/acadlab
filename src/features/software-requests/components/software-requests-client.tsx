@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Role, SoftwareRequestStatus } from "@prisma/client";
 import { ChevronLeft, ChevronRight, ChevronUp, Loader2, NotebookPen } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -23,6 +23,7 @@ import { updateSoftwareRequestStatusAction } from "@/features/software-requests/
 import { PAGE_SIZE_OPTIONS } from "@/features/shared/table";
 import { idleActionState } from "@/features/shared/types";
 import { cn, formatDate } from "@/lib/utils";
+import { useServerActionToast } from "@/features/notifications/hooks/use-server-action-toast";
 
 interface SoftwareRequestsClientProps {
   actorRole: Role;
@@ -410,7 +411,17 @@ interface UpdateRequestStatusDialogProps {
 }
 
 function UpdateRequestStatusDialog({ request, open, onOpenChange, onUpdated }: UpdateRequestStatusDialogProps) {
-  const [formState, formAction, isPending] = useActionState(updateSoftwareRequestStatusAction, idleActionState);
+  const [formState, formAction, isPending] = useServerActionToast(
+    updateSoftwareRequestStatusAction,
+    idleActionState,
+    {
+      messages: {
+        pending: "Atualizando status...",
+        success: "Status atualizado com sucesso.",
+        error: "Não foi possível atualizar o status.",
+      },
+    },
+  );
 
   useEffect(() => {
     if (formState.status === "success") {

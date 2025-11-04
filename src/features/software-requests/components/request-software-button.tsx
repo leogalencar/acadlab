@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createSoftwareRequestAction } from "@/features/software-requests/server/actions";
+import { useServerActionToast } from "@/features/notifications/hooks/use-server-action-toast";
 import { idleActionState } from "@/features/shared/types";
 
 interface RequestSoftwareButtonProps {
@@ -68,7 +69,17 @@ interface RequestSoftwareFormProps {
 }
 
 function RequestSoftwareForm({ laboratoryId, onCompleted }: RequestSoftwareFormProps) {
-  const [state, formAction, isPending] = useActionState(createSoftwareRequestAction, idleActionState);
+  const [state, formAction, isPending] = useServerActionToast(
+    createSoftwareRequestAction,
+    idleActionState,
+    {
+      messages: {
+        pending: "Enviando solicitação...",
+        success: "Solicitação enviada com sucesso.",
+        error: "Não foi possível registrar a solicitação.",
+      },
+    },
+  );
 
   useEffect(() => {
     if (state.status === "success") {

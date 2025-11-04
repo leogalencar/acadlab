@@ -1,6 +1,5 @@
 "use client";
 
-import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 
 import { Button } from "@/components/ui/button";
@@ -8,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { AuthActionState } from "@/features/auth/server/actions";
 import { resetPasswordAction } from "@/features/auth/server/actions";
+import { useServerActionToast } from "@/features/notifications/hooks/use-server-action-toast";
 
 const initialState: AuthActionState = { status: "idle" };
 
@@ -17,7 +17,17 @@ interface ResetPasswordFormProps {
 }
 
 export function ResetPasswordForm({ token, email }: ResetPasswordFormProps) {
-  const [state, formAction] = useActionState(resetPasswordAction, initialState);
+  const [state, formAction] = useServerActionToast(
+    resetPasswordAction,
+    initialState,
+    {
+      messages: {
+        pending: "Atualizando senha...",
+        success: "Senha atualizada com sucesso.",
+        error: "Não foi possível redefinir a senha.",
+      },
+    },
+  );
 
   return (
     <form className="space-y-6" action={formAction}>

@@ -17,6 +17,11 @@ import { getReservationsForDay } from "@/features/scheduling/server/queries";
 import type { ActionState } from "@/features/shared/types";
 import { getSystemRules } from "@/features/system-rules/server/queries";
 import type { SerializableSystemRules } from "@/features/system-rules/types";
+import {
+  notifyReservationCancelled,
+  notifyReservationConfirmed,
+  notifyEntityAction,
+} from "@/features/notifications/server/triggers";
 
 const MAX_OCCURRENCES = 26;
 const CANCEL_REASON_MAX_LENGTH = 500;
@@ -175,6 +180,18 @@ export async function createReservationAction(
 
   if (occurrences > 1 && session.user.role === Role.PROFESSOR) {
     occurrences = 1;
+  }
+
+  const laboratory = await prisma.laboratory.findUnique({
+    where: { id: laboratoryId },
+    select: { name: true },
+  });
+
+  if (!laboratory) {
+    return {
+      status: "error",
+      message: "Laboratório não encontrado. Atualize a página e tente novamente.",
+    };
   }
 
   const slots = slotIds
@@ -428,6 +445,14 @@ export async function createReservationAction(
     };
   }
 
+  await notifyReservationConfirmed({
+    userId: session.user.id,
+    laboratoryName: laboratory.name,
+    startTime: reservationStart,
+    endTime: reservationEnd,
+    occurrences,
+  });
+
   revalidatePath("/dashboard/scheduling");
   revalidatePath("/dashboard/scheduling/agenda");
   revalidatePath("/dashboard/scheduling/history");
@@ -474,6 +499,7 @@ export async function cancelReservationAction(
       createdById: true,
       startTime: true,
       endTime: true,
+      laboratory: { select: { name: true } },
     },
   });
 
@@ -522,6 +548,15 @@ export async function cancelReservationAction(
     };
   }
 
+  await notifyReservationCancelled({
+    userId: reservation.createdById,
+    laboratoryName: reservation.laboratory.name,
+    startTime: reservation.startTime,
+    endTime: reservation.endTime,
+    cancelledByName: session.user.name ?? null,
+    reason: cancellationReason,
+  });
+
   revalidatePath("/dashboard/scheduling");
   revalidatePath("/dashboard/scheduling/agenda");
   revalidatePath("/dashboard/scheduling/history");
@@ -567,6 +602,15 @@ export async function assignClassPeriodReservationAction(
   }
 
   const { teacherId, laboratoryId, date, subject, slotIds } = parsed.data;
+
+  const laboratory = await prisma.laboratory.findUnique({
+    where: { id: laboratoryId },
+    select: { name: true },
+  });
+
+  if (!laboratory) {
+    return { status: "error", message: "Laboratório não encontrado." };
+  }
 
   const teacher = await prisma.user.findUnique({
     where: { id: teacherId },
@@ -801,6 +845,22 @@ export async function assignClassPeriodReservationAction(
       message: "Não foi possível completar o agendamento do período letivo. Tente novamente mais tarde.",
     };
   }
+
+  await notifyReservationConfirmed({
+    userId: teacher.id,
+    laboratoryName: laboratory.name,
+    startTime: reservationStart,
+    endTime: reservationEnd,
+    occurrences,
+  });
+
+  await notifyEntityAction({
+    userId: session.user.id,
+    entity: "Períodos letivos",
+    entityName: `${teacher.name} • ${laboratory.name}`,
+    href: "/dashboard/scheduling/agenda",
+    type: "create",
+  });
 
   revalidatePath("/dashboard/scheduling");
   revalidatePath("/dashboard/scheduling/agenda");

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -23,6 +23,7 @@ import type {
   SoftwareSortField,
   SoftwareSortingState,
 } from "@/features/software-management/types";
+import { useServerActionToast } from "@/features/notifications/hooks/use-server-action-toast";
 
 interface SoftwareManagementClientProps {
   software: SerializableSoftware[];
@@ -375,9 +376,16 @@ interface SoftwareFormProps {
 }
 
 function SoftwareForm({ mode, software, onCompleted }: SoftwareFormProps) {
-  const [formState, formAction, isPending] = useActionState(
+  const [formState, formAction, isPending] = useServerActionToast(
     mode === "create" ? createSoftwareAction : updateSoftwareAction,
     idleActionState,
+    {
+      messages: {
+        pending: mode === "create" ? "Cadastrando software..." : "Salvando alterações...",
+        success: mode === "create" ? "Software cadastrado com sucesso." : "Software atualizado com sucesso.",
+        error: mode === "create" ? "Não foi possível cadastrar o software." : "Não foi possível atualizar o software.",
+      },
+    },
   );
 
   useEffect(() => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { Role, UserStatus } from "@prisma/client";
 import { ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -24,6 +24,7 @@ import type {
   UserSortField,
   UserSortingState,
 } from "@/features/user-management/types";
+import { useServerActionToast } from "@/features/notifications/hooks/use-server-action-toast";
 
 const ROLE_LABELS: Record<Role, string> = {
   [Role.ADMIN]: "Administrador",
@@ -469,9 +470,16 @@ interface UserFormProps {
 }
 
 function UserForm({ mode, user, actorRole, actorUserId, allowedEmailDomains, onCompleted }: UserFormProps) {
-  const [formState, formAction, isPending] = useActionState(
+  const [formState, formAction, isPending] = useServerActionToast(
     mode === "create" ? createUserAction : updateUserAction,
     initialActionState,
+    {
+      messages: {
+        pending: mode === "create" ? "Criando usuário..." : "Salvando alterações...",
+        success: mode === "create" ? "Usuário criado com sucesso." : "Usuário atualizado com sucesso.",
+        error: mode === "create" ? "Não foi possível criar o usuário." : "Não foi possível atualizar o usuário.",
+      },
+    },
   );
   const assignableRoles = useMemo(() => getAssignableRoles(actorRole, user?.role), [actorRole, user?.role]);
   const isSelf = user?.id === actorUserId;

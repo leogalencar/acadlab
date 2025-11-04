@@ -1,9 +1,10 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { Metadata } from "next";
 import "./globals.css";
 
 import { getSystemRules } from "@/features/system-rules/server/queries";
 import { buildPaletteCssVariables } from "@/features/system-rules/utils";
+import { AppNotificationsProvider } from "@/features/notifications/components/app-notifications-provider";
 
 const THEME_INITIALIZATION_SCRIPT = `
 (() => {
@@ -44,7 +45,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode;
+  children: ReactNode;
 }>) {
   const rules = await getSystemRules();
   const paletteStyles = buildPaletteCssVariables({
@@ -66,7 +67,7 @@ export default async function RootLayout({
         className="min-h-screen bg-background text-foreground antialiased"
         style={paletteStyles}
       >
-        {children}
+        <AppNotificationsProvider>{children}</AppNotificationsProvider>
       </body>
     </html>
   );

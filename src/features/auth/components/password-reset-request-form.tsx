@@ -1,6 +1,5 @@
 "use client";
 
-import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 
 import { Button } from "@/components/ui/button";
@@ -8,11 +7,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { AuthActionState } from "@/features/auth/server/actions";
 import { requestPasswordResetAction } from "@/features/auth/server/actions";
+import { useServerActionToast } from "@/features/notifications/hooks/use-server-action-toast";
 
 const initialState: AuthActionState = { status: "idle" };
 
 export function PasswordResetRequestForm() {
-  const [state, formAction] = useActionState(requestPasswordResetAction, initialState);
+  const [state, formAction] = useServerActionToast(
+    requestPasswordResetAction,
+    initialState,
+    {
+      messages: {
+        pending: "Enviando instruções...",
+        success: "Solicitação registrada.",
+        error: "Não foi possível enviar as instruções.",
+      },
+    },
+  );
 
   return (
     <form className="space-y-6" action={formAction}>

@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { ProtectedShell } from "@/features/dashboard/components/protected-shell";
+import { getNotificationsOverview } from "@/features/notifications/server/queries";
 import { getSystemRules } from "@/features/system-rules/server/queries";
 import { prisma } from "@/lib/prisma";
 
@@ -21,7 +23,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function ProtectedLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode;
+  children: ReactNode;
 }>) {
   const session = await auth();
 
@@ -29,12 +31,13 @@ export default async function ProtectedLayout({
     redirect("/login");
   }
 
-  const [user, systemRules] = await Promise.all([
+  const [user, systemRules, notificationsOverview] = await Promise.all([
     prisma.user.findUnique({
       where: { id: session.user.id },
       select: { name: true },
     }),
     getSystemRules(),
+    getNotificationsOverview({ userId: session.user.id }),
   ]);
 
   const displayName = user?.name ?? session.user.name ?? "Usuário";
@@ -44,6 +47,8 @@ export default async function ProtectedLayout({
       role={session.user.role}
       userName={displayName}
       branding={systemRules.branding}
+      initialNotifications={notificationsOverview.notifications}
+      initialUnreadNotifications={notificationsOverview.unreadCount}
     >
       {children}
     </ProtectedShell>

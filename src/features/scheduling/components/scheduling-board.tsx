@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Role, ReservationStatus } from "@prisma/client";
@@ -33,6 +33,7 @@ import type {
 import type { NonTeachingDayRule } from "@/features/system-rules/types";
 import { findNonTeachingRuleForDate, formatIsoDateInTimeZone } from "@/features/scheduling/utils";
 import { cn } from "@/lib/utils";
+import { useServerActionToast } from "@/features/notifications/hooks/use-server-action-toast";
 
 interface SchedulingBoardProps {
   laboratory: SerializableLaboratoryOption;
@@ -62,9 +63,16 @@ export function SchedulingBoard({
   const [isNavigating, startTransition] = useTransition();
   const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set());
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
-  const [formState, formAction, isSubmitting] = useActionState(
+  const [formState, formAction, isSubmitting] = useServerActionToast(
     createReservationAction,
     idleActionState,
+    {
+      messages: {
+        pending: "Confirmando reserva...",
+        success: "Reserva criada com sucesso.",
+        error: "Não foi possível criar a reserva.",
+      },
+    },
   );
   const formRef = useRef<HTMLFormElement | null>(null);
   const selectedLaboratoryId = laboratory.id;
