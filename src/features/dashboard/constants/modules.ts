@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { ClipboardList, HardHat, LayoutDashboard, Settings, SlidersHorizontal, Users } from "lucide-react";
+import { ClipboardList, HardHat, LayoutDashboard, LifeBuoy, Settings, SlidersHorizontal, Users } from "lucide-react";
 import { Role } from "@prisma/client";
 
 export interface DashboardModule {
@@ -45,6 +45,16 @@ const MODULE_LAB_SCHEDULING: DashboardModule = {
   status: "available",
 };
 
+const MODULE_SOFTWARE_REQUESTS: DashboardModule = {
+  id: "software-requests",
+  title: "Solicitações de Software",
+  description: "Envie e acompanhe pedidos de instalação ou atualização de softwares nos laboratórios.",
+  href: "/software-requests",
+  roles: ALL_ROLES,
+  icon: LifeBuoy,
+  status: "available",
+};
+
 const MODULE_SOFTWARE: DashboardModule = {
   id: "software-maintenance",
   title: "Catálogo de Software",
@@ -69,6 +79,7 @@ export const DASHBOARD_MODULES: DashboardModule[] = [
   MODULE_USER_MANAGEMENT,
   MODULE_LAB_RESOURCES,
   MODULE_LAB_SCHEDULING,
+  MODULE_SOFTWARE_REQUESTS,
   MODULE_SOFTWARE,
   MODULE_SYSTEM_RULES,
 ];
@@ -134,6 +145,9 @@ export const DASHBOARD_NAV_ITEMS: DashboardNavItem[] = [
         href: "/dashboard/scheduling/history",
       },
     ],
+  },
+  {
+    ...MODULE_SOFTWARE_REQUESTS,
   },
   {
     ...MODULE_SOFTWARE,

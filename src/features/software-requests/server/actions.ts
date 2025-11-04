@@ -1,0 +1,153 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+import { SoftwareRequestStatus } from "@prisma/client";
+
+import { auth } from "@/auth";
+import { prisma } from "@/lib/prisma";
+import { canManageSoftwareRequests } from "@/features/software-requests/types";
+import type { ActionState } from "@/features/shared/types";
+
+const notAuthenticated: ActionState = {
+  status: "error",
+  message: "Você precisa estar autenticado.",
+};
+
+const notAuthorized: ActionState = {
+  status: "error",
+  message: "Você não possui permissão para executar esta ação.",
+};
+
+const createRequestSchema = z.object({
+  laboratoryId: z.string().min(1, "Laboratório inválido."),
+  softwareName: z
+    .string()
+    .trim()
+    .min(2, "Informe o nome do software.")
+    .max(120, "O nome do software deve ter no máximo 120 caracteres."),
+  softwareVersion: z
+    .string()
+    .trim()
+    .min(1, "Informe a versão do software.")
+    .max(60, "A versão do software deve ter no máximo 60 caracteres."),
+  justification: z
+    .string()
+    .trim()
+    .min(10, "Descreva o motivo da solicitação (mínimo de 10 caracteres).")
+    .max(600, "A justificativa deve ter no máximo 600 caracteres."),
+});
+
+const updateStatusSchema = z.object({
+  requestId: z.string().min(1, "Solicitação inválida."),
+  status: z.nativeEnum(SoftwareRequestStatus),
+  responseNotes: z
+    .string()
+    .trim()
+    .max(600, "As observações devem ter no máximo 600 caracteres.")
+    .optional()
+    .transform((value) => (value && value.length > 0 ? value : undefined)),
+});
+
+export async function createSoftwareRequestAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await auth();
+
+  if (!session?.user) {
+    return notAuthenticated;
+  }
+
+  const parsed = createRequestSchema.safeParse({
+    laboratoryId: formData.get("laboratoryId"),
+    softwareName: formData.get("softwareName"),
+    softwareVersion: formData.get("softwareVersion"),
+    justification: formData.get("justification"),
+  });
+
+  if (!parsed.success) {
+    const message = parsed.error.issues[0]?.message ?? "Não foi possível validar os dados informados.";
+    return { status: "error", message };
+  }
+
+  const laboratory = await prisma.laboratory.findUnique({
+    where: { id: parsed.data.laboratoryId },
+    select: { id: true },
+  });
+
+  if (!laboratory) {
+    return { status: "error", message: "Laboratório não encontrado." };
+  }
+
+  await prisma.softwareRequest.create({
+    data: {
+      laboratoryId: parsed.data.laboratoryId,
+      softwareName: parsed.data.softwareName,
+      softwareVersion: parsed.data.softwareVersion,
+      justification: parsed.data.justification,
+      requesterId: session.user.id,
+    },
+  });
+
+  await revalidateSoftwareRequestRoutes();
+
+  return { status: "success", message: "Solicitação registrada com sucesso." };
+}
+
+export async function updateSoftwareRequestStatusAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await auth();
+
+  if (!session?.user) {
+    return notAuthenticated;
+  }
+
+  if (!canManageSoftwareRequests(session.user.role)) {
+    return notAuthorized;
+  }
+
+  const parsed = updateStatusSchema.safeParse({
+    requestId: formData.get("requestId"),
+    status: formData.get("status"),
+    responseNotes: formData.get("responseNotes"),
+  });
+
+  if (!parsed.success) {
+    const message = parsed.error.issues[0]?.message ?? "Não foi possível validar os dados informados.";
+    return { status: "error", message };
+  }
+
+  const existing = await prisma.softwareRequest.findUnique({
+    where: { id: parsed.data.requestId },
+    select: { id: true },
+  });
+
+  if (!existing) {
+    return { status: "error", message: "Solicitação não encontrada." };
+  }
+
+  const { status, responseNotes } = parsed.data;
+  const isPending = status === SoftwareRequestStatus.PENDING;
+
+  await prisma.softwareRequest.update({
+    where: { id: parsed.data.requestId },
+    data: {
+      status,
+      responseNotes: responseNotes ?? null,
+      reviewerId: isPending ? null : session.user.id,
+      reviewedAt: isPending ? null : new Date(),
+    },
+  });
+
+  await revalidateSoftwareRequestRoutes();
+
+  return { status: "success", message: "Status da solicitação atualizado." };
+}
+
+async function revalidateSoftwareRequestRoutes() {
+  revalidatePath("/software-requests");
+  revalidatePath("/dashboard");
+}
