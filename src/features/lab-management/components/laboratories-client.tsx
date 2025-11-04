@@ -34,6 +34,7 @@ import {
 import { canManageLaboratories } from "@/features/lab-management/types";
 import { createSoftwareAction } from "@/features/software-management/server/actions";
 import type { SerializableSoftware } from "@/features/software-management/types";
+import { RequestSoftwareButton } from "@/features/software-requests/components/request-software-button";
 
 const LAB_STATUS_LABELS: Record<LaboratoryStatus, string> = {
   [LaboratoryStatus.ACTIVE]: "Ativo",
@@ -367,7 +368,14 @@ interface LaboratoryDialogProps {
   canManage: boolean;
 }
 
-function LaboratoryDialog({ mode, open, onOpenChange, laboratory, softwareCatalog, canManage }: LaboratoryDialogProps) {
+function LaboratoryDialog({
+  mode,
+  open,
+  onOpenChange,
+  laboratory,
+  softwareCatalog,
+  canManage,
+}: LaboratoryDialogProps) {
   const canEdit = mode === "edit" && canManage && Boolean(laboratory);
   const router = useRouter();
   const quickCreateId = useId();
@@ -476,7 +484,27 @@ function LaboratoryDialog({ mode, open, onOpenChange, laboratory, softwareCatalo
               />
             </div>
           ) : laboratory ? (
-            <LaboratoryDetails laboratory={laboratory} />
+            <div className="space-y-6">
+              <LaboratoryDetails laboratory={laboratory} />
+              {!canManage ? (
+                <section className="space-y-3 rounded-lg border border-dashed border-border/60 bg-muted/20 p-4">
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                      Solicitar instalação de software
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      Descreva o software necessário para suas aulas. A equipe técnica será notificada e responderá pela tela
+                      de solicitações.
+                    </p>
+                  </div>
+                  <RequestSoftwareButton
+                    laboratoryId={laboratory.id}
+                    laboratoryName={laboratory.name}
+                    onSubmitted={router.refresh}
+                  />
+                </section>
+              ) : null}
+            </div>
           ) : null}
 
           {laboratory ? (
