@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, NotebookPen } from "lucide-react";
 
@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { assignClassPeriodReservationAction } from "@/features/scheduling/server/actions";
 import type { AcademicPeriodSummary, SerializableUserOption } from "@/features/scheduling/types";
+import { useServerActionToast } from "@/features/notifications/hooks/use-server-action-toast";
 import { idleActionState } from "@/features/shared/types";
 import { cn } from "@/lib/utils";
 
@@ -42,9 +43,16 @@ export function AssignClassPeriodDialog({
 }: AssignClassPeriodDialogProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [formState, formAction, isSubmitting] = useActionState(
+  const [formState, formAction, isSubmitting] = useServerActionToast(
     assignClassPeriodReservationAction,
     idleActionState,
+    {
+      messages: {
+        pending: "Agendando período letivo...",
+        success: "Período letivo agendado com sucesso.",
+        error: "Não foi possível criar o período letivo.",
+      },
+    },
   );
 
   const canSubmit = !disabled && teacherOptions.length > 0 && classPeriod && selectedSlotIds.length > 0;

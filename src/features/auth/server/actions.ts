@@ -11,6 +11,7 @@ import { z } from "zod";
 
 import { auth, signIn, signOut } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { notifyAuthEvent, notifyEntityAction } from "@/features/notifications/server/triggers";
 
 export type AuthActionState = {
   status: "idle" | "success" | "error";
@@ -103,6 +104,10 @@ export async function loginAction(
   }
 
   const callbackUrl = parsed.data.callbackUrl ?? "/dashboard";
+  const userRecord = await prisma.user.findUnique({
+    where: { email: parsed.data.email },
+    select: { id: true },
+  });
 
   try {
     const redirectUrl = await signIn("credentials", {
@@ -124,7 +129,15 @@ export async function loginAction(
         };
       }
 
+      if (userRecord) {
+        await notifyAuthEvent({ userId: userRecord.id, event: "login" });
+      }
+
       redirect(redirectUrl);
+    }
+
+    if (userRecord) {
+      await notifyAuthEvent({ userId: userRecord.id, event: "login" });
     }
 
     return { status: "success", statusCode: 200 };
@@ -150,6 +163,12 @@ export async function loginAction(
 }
 
 export async function signOutAction() {
+  const session = await auth();
+
+  if (session?.user) {
+    await notifyAuthEvent({ userId: session.user.id, event: "logout" });
+  }
+
   await signOut({ redirectTo: "/login", redirect: false });
   redirect("/login");
 }
@@ -302,6 +321,13 @@ export async function updateProfileAction(
 
     throw error;
   }
+
+  await notifyEntityAction({
+    userId: user.id,
+    entity: "Perfil",
+    entityName: parsed.data.name,
+    type: "update",
+  });
 
   revalidatePath("/profile");
   revalidatePath("/dashboard");

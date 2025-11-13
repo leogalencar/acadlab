@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import type { Role } from "@prisma/client";
 import { ChevronDown, ChevronRight, Lock } from "lucide-react";
 
@@ -12,6 +13,8 @@ import {
   DASHBOARD_NAV_ITEMS,
   type DashboardNavItem,
 } from "@/features/dashboard/constants/modules";
+import { NotificationsMenu } from "@/features/notifications/components/notifications-menu";
+import type { NotificationItem } from "@/features/notifications/types";
 import type { BrandingSettings } from "@/features/system-rules/types";
 import { cn } from "@/lib/utils";
 
@@ -19,10 +22,19 @@ interface ProtectedShellProps {
   userName: string;
   role: Role;
   branding: BrandingSettings;
-  children: React.ReactNode;
+  initialNotifications: NotificationItem[];
+  initialUnreadNotifications: number;
+  children: ReactNode;
 }
 
-export function ProtectedShell({ userName, role, branding, children }: ProtectedShellProps) {
+export function ProtectedShell({
+  userName,
+  role,
+  branding,
+  initialNotifications,
+  initialUnreadNotifications,
+  children,
+}: ProtectedShellProps) {
   const pathname = usePathname();
 
   const navItems = useMemo(
@@ -118,9 +130,15 @@ export function ProtectedShell({ userName, role, branding, children }: Protected
         </footer>
       </aside>
       <div className="flex flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-4 backdrop-blur md:px-8">
+        <header className="flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-4 backdrop-blur md:px-8 z-50">
           <Breadcrumbs pathname={pathname} />
-          <AccountMenu userName={userName} />
+          <div className="flex items-center gap-3">
+            <NotificationsMenu
+              initialNotifications={initialNotifications}
+              initialUnreadCount={initialUnreadNotifications}
+            />
+            <AccountMenu userName={userName} />
+          </div>
         </header>
         <main className="flex-1 overflow-y-auto px-4 py-6 md:px-8">
           <div className="mx-auto w-full max-w-5xl">{children}</div>

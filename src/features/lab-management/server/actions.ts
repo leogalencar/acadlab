@@ -8,6 +8,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { canManageLaboratories } from "@/features/lab-management/types";
 import type { ActionState } from "@/features/shared/types";
+import { notifyEntityAction } from "@/features/notifications/server/triggers";
 
 const initialError: ActionState = {
   status: "error",
@@ -137,6 +138,14 @@ export async function createLaboratoryAction(
     throw error;
   }
 
+  await notifyEntityAction({
+    userId: session.user.id,
+    entity: "Laboratório",
+    entityName: laboratoryData.name.trim(),
+    href: "/dashboard/laboratories",
+    type: "create",
+  });
+
   await revalidateLaboratories();
 
   return { status: "success", message: "Laboratório cadastrado com sucesso." };
@@ -198,6 +207,14 @@ export async function updateLaboratoryAction(
     throw error;
   }
 
+  await notifyEntityAction({
+    userId: session.user.id,
+    entity: "Laboratório",
+    entityName: parsed.data.name.trim(),
+    href: "/dashboard/laboratories",
+    type: "update",
+  });
+
   await revalidateLaboratories();
 
   return { status: "success", message: "Laboratório atualizado com sucesso." };
@@ -225,6 +242,15 @@ export async function deleteLaboratoryAction(
     return { status: "error", message };
   }
 
+  const laboratory = await prisma.laboratory.findUnique({
+    where: { id: parsed.data.laboratoryId },
+    select: { name: true },
+  });
+
+  if (!laboratory) {
+    return { status: "error", message: "Laboratório não encontrado." };
+  }
+
   try {
     await prisma.laboratory.delete({ where: { id: parsed.data.laboratoryId } });
   } catch (error) {
@@ -239,6 +265,14 @@ export async function deleteLaboratoryAction(
 
     throw error;
   }
+
+  await notifyEntityAction({
+    userId: session.user.id,
+    entity: "Laboratório",
+    entityName: laboratory.name,
+    href: "/dashboard/laboratories",
+    type: "delete",
+  });
 
   await revalidateLaboratories();
 
@@ -271,7 +305,7 @@ export async function assignSoftwareToLaboratoryAction(
 
   const laboratory = await prisma.laboratory.findUnique({
     where: { id: parsed.data.laboratoryId },
-    select: { id: true },
+    select: { id: true, name: true },
   });
 
   if (!laboratory) {
@@ -280,7 +314,7 @@ export async function assignSoftwareToLaboratoryAction(
 
   const software = await prisma.software.findUnique({
     where: { id: parsed.data.softwareId },
-    select: { id: true },
+    select: { id: true, name: true, version: true },
   });
 
   if (!software) {
@@ -308,6 +342,18 @@ export async function assignSoftwareToLaboratoryAction(
 
     throw error;
   }
+
+  const softwareLabel = software.version
+    ? `${software.name} • ${software.version}`
+    : software.name;
+
+  await notifyEntityAction({
+    userId: session.user.id,
+    entity: `Softwares do laboratório ${laboratory.name}`,
+    entityName: softwareLabel,
+    href: "/dashboard/laboratories",
+    type: "update",
+  });
 
   await revalidateLaboratories();
 
@@ -337,6 +383,23 @@ export async function removeSoftwareFromLaboratoryAction(
     return { status: "error", message };
   }
 
+  const association = await prisma.laboratorySoftware.findUnique({
+    where: {
+      laboratoryId_softwareId: {
+        laboratoryId: parsed.data.laboratoryId,
+        softwareId: parsed.data.softwareId,
+      },
+    },
+    select: {
+      laboratory: { select: { name: true } },
+      software: { select: { name: true, version: true } },
+    },
+  });
+
+  if (!association) {
+    return { status: "error", message: "Associação não encontrada." };
+  }
+
   try {
     await prisma.laboratorySoftware.delete({
       where: {
@@ -358,6 +421,18 @@ export async function removeSoftwareFromLaboratoryAction(
 
     throw error;
   }
+
+  const softwareLabel = association.software.version
+    ? `${association.software.name} • ${association.software.version}`
+    : association.software.name;
+
+  await notifyEntityAction({
+    userId: session.user.id,
+    entity: `Softwares do laboratório ${association.laboratory.name}`,
+    entityName: softwareLabel,
+    href: "/dashboard/laboratories",
+    type: "update",
+  });
 
   await revalidateLaboratories();
 

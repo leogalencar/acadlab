@@ -8,6 +8,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { MANAGER_ROLES } from "@/features/shared/roles";
 import type { ActionState } from "@/features/shared/types";
+import { notifyEntityAction } from "@/features/notifications/server/triggers";
 
 function canManageSoftware(role: Role): boolean {
   return MANAGER_ROLES.includes(role);
@@ -89,6 +90,14 @@ export async function createSoftwareAction(
     throw error;
   }
 
+  await notifyEntityAction({
+    userId: session.user.id,
+    entity: "Software",
+    entityName: `${parsed.data.name.trim()} • ${parsed.data.version.trim()}`,
+    href: "/software",
+    type: "create",
+  });
+
   await revalidateSoftwareRelatedRoutes();
 
   return { status: "success", message: "Software cadastrado com sucesso." };
@@ -148,6 +157,14 @@ export async function updateSoftwareAction(
     throw error;
   }
 
+  await notifyEntityAction({
+    userId: session.user.id,
+    entity: "Software",
+    entityName: `${parsed.data.name.trim()} • ${parsed.data.version.trim()}`,
+    href: "/software",
+    type: "update",
+  });
+
   await revalidateSoftwareRelatedRoutes();
 
   return { status: "success", message: "Software atualizado com sucesso." };
@@ -175,6 +192,15 @@ export async function deleteSoftwareAction(
     return { status: "error", message };
   }
 
+  const software = await prisma.software.findUnique({
+    where: { id: parsed.data.softwareId },
+    select: { name: true, version: true },
+  });
+
+  if (!software) {
+    return { status: "error", message: "Software não encontrado." };
+  }
+
   try {
     await prisma.software.delete({ where: { id: parsed.data.softwareId } });
   } catch (error) {
@@ -189,6 +215,18 @@ export async function deleteSoftwareAction(
 
     throw error;
   }
+
+  const softwareLabel = software.version
+    ? `${software.name} • ${software.version}`
+    : software.name;
+
+  await notifyEntityAction({
+    userId: session.user.id,
+    entity: "Software",
+    entityName: softwareLabel,
+    href: "/software",
+    type: "delete",
+  });
 
   await revalidateSoftwareRelatedRoutes();
 

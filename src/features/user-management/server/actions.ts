@@ -13,6 +13,7 @@ import { getAllowedEmailDomains } from "@/features/system-rules/server/queries";
 import { extractEmailDomain } from "@/features/system-rules/utils";
 import { MANAGER_ROLES } from "@/features/shared/roles";
 import { sendNewUserPasswordEmail } from "@/features/user-management/server/email";
+import { notifyEntityAction } from "@/features/notifications/server/triggers";
 
 export type UserManagementActionState = {
   status: "idle" | "success" | "error";
@@ -160,6 +161,14 @@ export async function createUserAction(
     };
   }
 
+  await notifyEntityAction({
+    userId: session.user.id,
+    entity: "Usuários",
+    entityName: sanitizedName,
+    href: "/users",
+    type: "create",
+  });
+
   revalidatePath("/users");
   revalidatePath("/dashboard");
 
@@ -240,9 +249,12 @@ export async function updateUserAction(
     };
   }
 
+  const sanitizedName = parsed.data.name.trim();
+  const sanitizedEmail = parsed.data.email.toLowerCase();
+
   const updateData: Prisma.UserUpdateInput = {
-    name: parsed.data.name.trim(),
-    email: parsed.data.email.toLowerCase(),
+    name: sanitizedName,
+    email: sanitizedEmail,
     role: parsed.data.role,
     status: parsed.data.status,
   };
@@ -265,6 +277,14 @@ export async function updateUserAction(
 
     throw error;
   }
+
+  await notifyEntityAction({
+    userId: session.user.id,
+    entity: "Usuários",
+    entityName: sanitizedName,
+    href: "/users",
+    type: "update",
+  });
 
   revalidatePath("/users");
   revalidatePath("/dashboard");
@@ -305,7 +325,7 @@ export async function deleteUserAction(formData: FormData): Promise<UserManageme
 
   const targetUser = await prisma.user.findUnique({
     where: { id: parsed.data.userId },
-    select: { role: true },
+    select: { role: true, name: true },
   });
 
   if (!targetUser) {
@@ -336,6 +356,14 @@ export async function deleteUserAction(formData: FormData): Promise<UserManageme
 
     throw error;
   }
+
+  await notifyEntityAction({
+    userId: session.user.id,
+    entity: "Usuários",
+    entityName: targetUser.name ?? "Usuário",
+    href: "/users",
+    type: "delete",
+  });
 
   revalidatePath("/users");
   revalidatePath("/dashboard");

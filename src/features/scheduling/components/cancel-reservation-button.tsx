@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState, type ComponentProps } from "react";
+import { useEffect, useState, type ComponentProps } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, XCircle } from "lucide-react";
 
@@ -15,6 +15,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cancelReservationAction } from "@/features/scheduling/server/actions";
+import { useServerActionToast } from "@/features/notifications/hooks/use-server-action-toast";
 import { idleActionState } from "@/features/shared/types";
 
 interface CancelReservationButtonProps {
@@ -34,7 +35,17 @@ export function CancelReservationButton({
 }: CancelReservationButtonProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [formState, formAction, isPending] = useActionState(cancelReservationAction, idleActionState);
+  const [formState, formAction, isPending] = useServerActionToast(
+    cancelReservationAction,
+    idleActionState,
+    {
+      messages: {
+        pending: "Cancelando reserva...",
+        success: "Reserva cancelada com sucesso.",
+        error: "Não foi possível cancelar a reserva.",
+      },
+    },
+  );
 
   useEffect(() => {
     if (formState.status === "success") {

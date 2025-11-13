@@ -73,6 +73,7 @@ export default async function SoftwareRequestsPage({
       />
 
       <SoftwareRequestsClient
+        actorId={session.user.id}
         actorRole={session.user.role}
         requests={requests}
         sorting={sorting}

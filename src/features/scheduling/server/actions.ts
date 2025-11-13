@@ -17,6 +17,11 @@ import { getReservationsForDay } from "@/features/scheduling/server/queries";
 import type { ActionState } from "@/features/shared/types";
 import { getSystemRules } from "@/features/system-rules/server/queries";
 import type { SerializableSystemRules } from "@/features/system-rules/types";
+import {
+  notifyReservationCancelled,
+  notifyReservationConfirmed,
+  notifyEntityAction,
+} from "@/features/notifications/server/triggers";
 
 const MAX_OCCURRENCES = 26;
 const CANCEL_REASON_MAX_LENGTH = 500;
@@ -45,6 +50,15 @@ const createReservationSchema = z.object({
 
       return Math.min(parsed, MAX_OCCURRENCES);
     }),
+  purpose: z
+    .enum(["standard", "maintenance"])
+    .default("standard"),
+  maintenanceNotes: z
+    .string()
+    .trim()
+    .max(200, "A descrição da manutenção deve ter no máximo 200 caracteres.")
+    .optional()
+    .transform((value) => (value && value.length > 0 ? value : undefined)),
 });
 
 const cancelReservationSchema = z.object({
@@ -141,6 +155,10 @@ async function getSubjectColumnSupport(): Promise<SubjectColumnSupport> {
   }
 }
 
+function getString(value: FormDataEntryValue | null): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
 export async function createReservationAction(
   _prev: ActionState,
   formData: FormData,
@@ -162,7 +180,9 @@ export async function createReservationAction(
     laboratoryId: formData.get("laboratoryId"),
     date: formData.get("date"),
     slotIds: rawSlotIds,
-    occurrences: formData.get("occurrences"),
+    occurrences: getString(formData.get("occurrences")),
+    purpose: getString(formData.get("purpose")),
+    maintenanceNotes: getString(formData.get("maintenanceNotes")),
   });
 
   if (!parsed.success) {
@@ -175,6 +195,35 @@ export async function createReservationAction(
 
   if (occurrences > 1 && session.user.role === Role.PROFESSOR) {
     occurrences = 1;
+  }
+
+  const canScheduleMaintenance = session.user.role === Role.ADMIN || session.user.role === Role.TECHNICIAN;
+  const wantsMaintenance = parsed.data.purpose === "maintenance";
+
+  if (wantsMaintenance && !canScheduleMaintenance) {
+    return {
+      status: "error",
+      message: "Somente técnicos e administradores podem reservar laboratórios para manutenção.",
+    };
+  }
+
+  const isMaintenance = wantsMaintenance && canScheduleMaintenance;
+  const maintenanceSubject = isMaintenance
+    ? parsed.data.maintenanceNotes
+      ? `Manutenção • ${parsed.data.maintenanceNotes}`
+      : "Manutenção programada"
+    : undefined;
+
+  const laboratory = await prisma.laboratory.findUnique({
+    where: { id: laboratoryId },
+    select: { name: true },
+  });
+
+  if (!laboratory) {
+    return {
+      status: "error",
+      message: "Laboratório não encontrado. Atualize a página e tente novamente.",
+    };
   }
 
   const slots = slotIds
@@ -308,6 +357,7 @@ export async function createReservationAction(
 
   const reservationStart = new Date(firstSlot.startTime);
   const reservationEnd = new Date(lastSlot.endTime);
+  const subjectColumnSupport = await getSubjectColumnSupport();
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -328,6 +378,7 @@ export async function createReservationAction(
             endDate: new Date(
               reservationEnd.getTime() + (occurrences - 1) * 7 * 24 * 60 * 60_000,
             ),
+            ...(subjectColumnSupport.recurrence && maintenanceSubject ? { subject: maintenanceSubject } : {}),
           },
           select: { id: true },
         });
@@ -387,6 +438,7 @@ export async function createReservationAction(
             endTime: occurrenceEnd,
             status: ReservationStatus.CONFIRMED,
             recurrenceId: recurrenceId ?? undefined,
+            ...(subjectColumnSupport.reservation && maintenanceSubject ? { subject: maintenanceSubject } : {}),
           },
         });
       }
@@ -427,6 +479,14 @@ export async function createReservationAction(
       message: "Não foi possível criar a reserva. Tente novamente mais tarde.",
     };
   }
+
+  await notifyReservationConfirmed({
+    userId: session.user.id,
+    laboratoryName: laboratory.name,
+    startTime: reservationStart,
+    endTime: reservationEnd,
+    occurrences,
+  });
 
   revalidatePath("/dashboard/scheduling");
   revalidatePath("/dashboard/scheduling/agenda");
@@ -474,6 +534,7 @@ export async function cancelReservationAction(
       createdById: true,
       startTime: true,
       endTime: true,
+      laboratory: { select: { name: true } },
     },
   });
 
@@ -522,6 +583,15 @@ export async function cancelReservationAction(
     };
   }
 
+  await notifyReservationCancelled({
+    userId: reservation.createdById,
+    laboratoryName: reservation.laboratory.name,
+    startTime: reservation.startTime,
+    endTime: reservation.endTime,
+    cancelledByName: session.user.name ?? null,
+    reason: cancellationReason,
+  });
+
   revalidatePath("/dashboard/scheduling");
   revalidatePath("/dashboard/scheduling/agenda");
   revalidatePath("/dashboard/scheduling/history");
@@ -567,6 +637,15 @@ export async function assignClassPeriodReservationAction(
   }
 
   const { teacherId, laboratoryId, date, subject, slotIds } = parsed.data;
+
+  const laboratory = await prisma.laboratory.findUnique({
+    where: { id: laboratoryId },
+    select: { name: true },
+  });
+
+  if (!laboratory) {
+    return { status: "error", message: "Laboratório não encontrado." };
+  }
 
   const teacher = await prisma.user.findUnique({
     where: { id: teacherId },
@@ -801,6 +880,22 @@ export async function assignClassPeriodReservationAction(
       message: "Não foi possível completar o agendamento do período letivo. Tente novamente mais tarde.",
     };
   }
+
+  await notifyReservationConfirmed({
+    userId: teacher.id,
+    laboratoryName: laboratory.name,
+    startTime: reservationStart,
+    endTime: reservationEnd,
+    occurrences,
+  });
+
+  await notifyEntityAction({
+    userId: session.user.id,
+    entity: "Períodos letivos",
+    entityName: `${teacher.name} • ${laboratory.name}`,
+    href: "/dashboard/scheduling/agenda",
+    type: "create",
+  });
 
   revalidatePath("/dashboard/scheduling");
   revalidatePath("/dashboard/scheduling/agenda");

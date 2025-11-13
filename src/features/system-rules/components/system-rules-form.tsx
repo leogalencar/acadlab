@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  useActionState,
   useEffect,
   useMemo,
   useRef,
@@ -51,6 +50,7 @@ import {
   formatMinutesToTime,
   parseTimeToMinutes,
 } from "@/features/system-rules/utils";
+import { useServerActionToast } from "@/features/notifications/hooks/use-server-action-toast";
 
 const FORM_INITIAL_STATE = { status: "idle" as const };
 
@@ -142,7 +142,17 @@ interface AcademicPeriodFormState {
 }
 
 export function SystemRulesForm({ rules }: SystemRulesFormProps) {
-  const [state, formAction] = useActionState(updateSystemRulesAction, FORM_INITIAL_STATE);
+  const [state, formAction] = useServerActionToast(
+    updateSystemRulesAction,
+    FORM_INITIAL_STATE,
+    {
+      messages: {
+        pending: "Salvando configurações...",
+        success: "Regras atualizadas com sucesso.",
+        error: "Não foi possível atualizar as regras.",
+      },
+    },
+  );
   const router = useRouter();
 
   const [colors, setColors] = useState<ColorState>(() => createColorState(rules));

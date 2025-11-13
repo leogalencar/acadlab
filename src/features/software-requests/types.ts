@@ -61,4 +61,5 @@ export const SOFTWARE_REQUEST_STATUS_LABELS: Record<SoftwareRequestStatus, strin
   [SoftwareRequestStatus.PENDING]: "Pendente",
   [SoftwareRequestStatus.APPROVED]: "Aprovado",
   [SoftwareRequestStatus.REJECTED]: "Rejeitado",
+  [SoftwareRequestStatus.CANCELLED]: "Cancelado",
 };

@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  useActionState,
   useEffect,
   useId,
   useMemo,
@@ -35,6 +34,7 @@ import { canManageLaboratories } from "@/features/lab-management/types";
 import { createSoftwareAction } from "@/features/software-management/server/actions";
 import type { SerializableSoftware } from "@/features/software-management/types";
 import { RequestSoftwareButton } from "@/features/software-requests/components/request-software-button";
+import { useServerActionToast } from "@/features/notifications/hooks/use-server-action-toast";
 
 const LAB_STATUS_LABELS: Record<LaboratoryStatus, string> = {
   [LaboratoryStatus.ACTIVE]: "Ativo",
@@ -568,9 +568,16 @@ interface LaboratoryFormProps {
 }
 
 function LaboratoryForm({ mode, laboratory, softwareCatalog, onCompleted, quickCreate }: LaboratoryFormProps) {
-  const [formState, formAction, isPending] = useActionState(
+  const [formState, formAction, isPending] = useServerActionToast(
     mode === "create" ? createLaboratoryAction : updateLaboratoryAction,
     idleActionState,
+    {
+      messages: {
+        pending: mode === "create" ? "Cadastrando laboratório..." : "Salvando alterações...",
+        success: mode === "create" ? "Laboratório cadastrado com sucesso." : "Laboratório atualizado com sucesso.",
+        error: mode === "create" ? "Não foi possível cadastrar o laboratório." : "Não foi possível atualizar o laboratório.",
+      },
+    },
   );
   const formId = useId();
 
@@ -776,7 +783,17 @@ interface SoftwareAssociationSectionProps {
 }
 
 function SoftwareAssociationSection({ laboratory, availableSoftware, canManage, onRefresh }: SoftwareAssociationSectionProps) {
-  const [assignState, assignAction, isAssigning] = useActionState(assignSoftwareToLaboratoryAction, idleActionState);
+  const [assignState, assignAction, isAssigning] = useServerActionToast(
+    assignSoftwareToLaboratoryAction,
+    idleActionState,
+    {
+      messages: {
+        pending: "Associando software...",
+        success: "Software associado ao laboratório.",
+        error: "Não foi possível associar o software.",
+      },
+    },
+  );
   const [removeFeedback, setRemoveFeedback] = useState<ActionState | null>(null);
   const [isRemoving, startRemoving] = useTransition();
   const [showQuickCreate, setShowQuickCreate] = useState(false);
@@ -947,7 +964,17 @@ interface SoftwareQuickCreateProps {
 }
 
 function SoftwareQuickCreate({ id, onSuccess }: SoftwareQuickCreateProps) {
-  const [formState, formAction, isPending] = useActionState(createSoftwareAction, idleActionState);
+  const [formState, formAction, isPending] = useServerActionToast(
+    createSoftwareAction,
+    idleActionState,
+    {
+      messages: {
+        pending: "Cadastrando software...",
+        success: "Software cadastrado e disponível no catálogo.",
+        error: "Não foi possível cadastrar o software.",
+      },
+    },
+  );
 
   useEffect(() => {
     if (formState.status === "success") {

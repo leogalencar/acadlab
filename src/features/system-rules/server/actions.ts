@@ -18,6 +18,7 @@ import {
 } from "@/features/system-rules/constants";
 import { calculatePeriodEnd } from "@/features/system-rules/utils";
 import type { SystemRulesActionState } from "@/features/system-rules/types";
+import { notifyEntityAction } from "@/features/notifications/server/triggers";
 
 const colorSchema = z
   .string()
@@ -545,6 +546,14 @@ export async function updateSystemRulesAction(
       message: "Não foi possível salvar as regras do sistema. Tente novamente mais tarde.",
     };
   }
+
+  await notifyEntityAction({
+    userId: session.user.id,
+    entity: "Regras do sistema",
+    entityName: data.institutionName.trim(),
+    href: "/system-rules",
+    type: "update",
+  });
 
   revalidatePath("/system-rules");
   revalidatePath("/", "layout");
