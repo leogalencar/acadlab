@@ -7,6 +7,7 @@ import { SoftwareManagementClient } from "@/features/software-management/compone
 import { SoftwareFilters } from "@/features/software-management/components/software-filters";
 import { buildSoftwareFiltersState, getSoftwareCatalog } from "@/features/software-management/server/queries";
 import { resolveSearchParams, type SearchParamsLike } from "@/features/shared/search-params";
+import { createAuditSpan } from "@/lib/logging/audit";
 
 export const metadata: Metadata = {
   title: "Catálogo de softwares",
@@ -19,9 +20,16 @@ export default async function SoftwarePage({
 }: {
   searchParams?: SearchParamsLike<SoftwareSearchParams>;
 }) {
+  const audit = createAuditSpan(
+    { module: "page", action: "SoftwarePage" },
+    { hasSearchParams: Boolean(searchParams) },
+    "Rendering /software",
+    { importance: "low", logStart: false, logSuccess: false },
+  );
   const session = await auth();
 
   if (!session?.user) {
+    audit.validationFailure({ reason: "not_authenticated" });
     redirect("/login?callbackUrl=/software");
   }
 
@@ -29,34 +37,37 @@ export default async function SoftwarePage({
     session.user.role === Role.ADMIN || session.user.role === Role.TECHNICIAN;
 
   if (!canManageSoftware) {
+    audit.validationFailure({ reason: "forbidden", role: session.user.role });
     redirect("/dashboard");
   }
 
-  const resolvedParams = await resolveSearchParams<SoftwareSearchParams>(searchParams);
-  const {
-    filters,
-    searchTerm,
-    suppliers,
-    updatedFrom,
-    updatedTo,
-    sorting,
-    pagination,
-  } =
-    buildSoftwareFiltersState(resolvedParams);
+  try {
+    const resolvedParams = await resolveSearchParams<SoftwareSearchParams>(searchParams);
+    const {
+      filters,
+      searchTerm,
+      suppliers,
+      updatedFrom,
+      updatedTo,
+      sorting,
+      pagination,
+    } = buildSoftwareFiltersState(resolvedParams);
 
-  const { software, total, supplierOptions } = await getSoftwareCatalog({
-    searchTerm,
-    suppliers,
-    updatedFrom,
-    updatedTo,
-    sorting,
-    pagination,
-  });
+    const { software, total, supplierOptions } = await getSoftwareCatalog({
+      searchTerm,
+      suppliers,
+      updatedFrom,
+      updatedTo,
+      sorting,
+      pagination,
+    });
 
-  const paginationState = { ...pagination, total };
+    const paginationState = { ...pagination, total };
 
-  return (
-    <div className="space-y-8">
+    audit.success({ softwareCount: software.length, total });
+
+    return (
+      <div className="space-y-8">
       <header className="space-y-2">
         <p className="text-sm font-medium text-primary/80">Catálogo oficial</p>
         <div className="space-y-1">
@@ -74,11 +85,15 @@ export default async function SoftwarePage({
         perPage={paginationState.perPage}
       />
 
-      <SoftwareManagementClient
-        software={software}
-        sorting={sorting}
-        pagination={paginationState}
-      />
-    </div>
-  );
+        <SoftwareManagementClient
+          software={software}
+          sorting={sorting}
+          pagination={paginationState}
+        />
+      </div>
+    );
+  } catch (error) {
+    audit.failure(error);
+    throw error;
+  }
 }

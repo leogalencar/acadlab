@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { createAuditSpan } from "@/lib/logging/audit";
 
 import type {
   SerializableSoftware,
@@ -112,37 +113,96 @@ export async function getSoftwareCatalog({
   const perPage = Math.max(1, pagination.perPage);
   const skip = (page - 1) * perPage;
 
-  const [total, softwareList, supplierRecords] = await Promise.all([
-    prisma.software.count({ where }),
-    prisma.software.findMany({
-      where,
-      orderBy,
-      skip,
-      take: perPage,
-    }),
-    prisma.software.findMany({
-      where: { supplier: { not: null } },
-      distinct: ["supplier"],
-      orderBy: { supplier: "asc" },
-      select: { supplier: true },
-    }),
-  ]);
+  const audit = createAuditSpan(
+    { module: "software-management", action: "getSoftwareCatalog" },
+    {
+      filters: {
+        hasSearch: Boolean(searchTerm),
+        supplierCount: suppliers.length,
+        hasDateRange: Boolean(updatedFrom || updatedTo),
+      },
+      sorting,
+      pagination: { page, perPage },
+    },
+    "Preparing software catalog query",
+    { importance: "low", logStart: false, logSuccess: false },
+  );
 
-  const supplierOptions = supplierRecords
-    .map((record) => record.supplier)
-    .filter((value): value is string => Boolean(value));
+  try {
+    const [total, softwareList, supplierRecords] = await Promise.all([
+      audit.trackPrisma(
+        { model: "software", action: "count", meta: { hasFilter: Boolean(where) } },
+        () => prisma.software.count({ where }),
+      ),
+      audit.trackPrisma(
+        {
+          model: "software",
+          action: "findMany",
+          meta: { skip, take: perPage },
+        },
+        () =>
+          prisma.software.findMany({
+            where,
+            orderBy,
+            skip,
+            take: perPage,
+          }),
+      ),
+      audit.trackPrisma(
+        {
+          model: "software",
+          action: "findMany",
+          meta: { distinct: "supplier" },
+        },
+        () =>
+          prisma.software.findMany({
+            where: { supplier: { not: null } },
+            distinct: ["supplier"],
+            orderBy: { supplier: "asc" },
+            select: { supplier: true },
+          }),
+      ),
+    ]);
 
-  const software = softwareList.map(serializeSoftware);
+    const supplierOptions = supplierRecords
+      .map((record) => record.supplier)
+      .filter((value): value is string => Boolean(value));
 
-  return { software, total, supplierOptions };
+    const software = softwareList.map(serializeSoftware);
+
+    audit.success({ total, returned: software.length, supplierOptions: supplierOptions.length }, "Software catalog fetched");
+
+    return { software, total, supplierOptions };
+  } catch (error) {
+    audit.failure(error, { stage: "getSoftwareCatalog" });
+    throw error;
+  }
 }
 
 export async function getAllSoftwareOptions(): Promise<SerializableSoftware[]> {
-  const records = await prisma.software.findMany({
-    orderBy: [{ name: "asc" }, { version: "asc" }],
-  });
+  const audit = createAuditSpan(
+    { module: "software-management", action: "getAllSoftwareOptions" },
+    undefined,
+    "Loading catalog options",
+    { importance: "low", logStart: false, logSuccess: false },
+  );
 
-  return records.map(serializeSoftware);
+  try {
+    const records = await audit.trackPrisma(
+      { model: "software", action: "findMany", meta: { orderBy: "name,version" } },
+      () =>
+        prisma.software.findMany({
+          orderBy: [{ name: "asc" }, { version: "asc" }],
+        }),
+    );
+
+    const serialized = records.map(serializeSoftware);
+    audit.success({ count: serialized.length });
+    return serialized;
+  } catch (error) {
+    audit.failure(error, { stage: "getAllSoftwareOptions" });
+    throw error;
+  }
 }
 
 export function buildSoftwareFiltersState(

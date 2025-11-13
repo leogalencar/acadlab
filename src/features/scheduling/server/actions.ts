@@ -6,6 +6,8 @@ import { ReservationStatus, Role } from "@prisma/client";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { createAuditSpan } from "@/lib/logging/audit";
+import type { AuditSpan } from "@/lib/logging/audit";
 import type { ReservationSlot } from "@/features/scheduling/types";
 import {
   buildDailySchedule,
@@ -25,6 +27,11 @@ import {
 
 const MAX_OCCURRENCES = 26;
 const CANCEL_REASON_MAX_LENGTH = 500;
+
+function validationError(audit: AuditSpan, reason: string, message: string): ActionState {
+  audit.validationFailure({ reason });
+  return { status: "error", message };
+}
 
 const createReservationSchema = z.object({
   laboratoryId: z.string().min(1, "Selecione um laboratório válido."),
@@ -164,12 +171,24 @@ export async function createReservationAction(
   formData: FormData,
 ): Promise<ActionState> {
   const session = await auth();
+  const audit = createAuditSpan(
+    {
+      module: "scheduling",
+      action: "createReservationAction",
+      actorId: session?.user?.id,
+      actorRole: session?.user?.role,
+    },
+    { fieldCount: Array.from(formData.keys()).length },
+    "Received request to create reservation",
+    { importance: "high", persist: true },
+  );
 
   if (!session?.user) {
-    return {
-      status: "error",
-      message: "Você precisa estar autenticado para reservar um laboratório.",
-    };
+    return validationError(
+      audit,
+      "not_authenticated",
+      "Você precisa estar autenticado para reservar um laboratório.",
+    );
   }
 
   const rawSlotIds = formData
@@ -187,7 +206,7 @@ export async function createReservationAction(
 
   if (!parsed.success) {
     const message = parsed.error.issues[0]?.message ?? "Não foi possível validar a reserva.";
-    return { status: "error", message };
+    return validationError(audit, "invalid_payload", message);
   }
 
   const { laboratoryId, date, slotIds } = parsed.data;
@@ -201,10 +220,11 @@ export async function createReservationAction(
   const wantsMaintenance = parsed.data.purpose === "maintenance";
 
   if (wantsMaintenance && !canScheduleMaintenance) {
-    return {
-      status: "error",
-      message: "Somente técnicos e administradores podem reservar laboratórios para manutenção.",
-    };
+    return validationError(
+      audit,
+      "maintenance_forbidden",
+      "Somente técnicos e administradores podem reservar laboratórios para manutenção.",
+    );
   }
 
   const isMaintenance = wantsMaintenance && canScheduleMaintenance;
@@ -214,16 +234,21 @@ export async function createReservationAction(
       : "Manutenção programada"
     : undefined;
 
-  const laboratory = await prisma.laboratory.findUnique({
-    where: { id: laboratoryId },
-    select: { name: true },
-  });
+  const laboratory = await audit.trackPrisma(
+    { model: "laboratory", action: "findUnique", targetIds: laboratoryId },
+    () =>
+      prisma.laboratory.findUnique({
+        where: { id: laboratoryId },
+        select: { name: true },
+      }),
+  );
 
   if (!laboratory) {
-    return {
-      status: "error",
-      message: "Laboratório não encontrado. Atualize a página e tente novamente.",
-    };
+    return validationError(
+      audit,
+      "laboratory_not_found",
+      "Laboratório não encontrado. Atualize a página e tente novamente.",
+    );
   }
 
   const slots = slotIds
@@ -234,19 +259,21 @@ export async function createReservationAction(
     .sort((left, right) => left.start.getTime() - right.start.getTime());
 
   if (slots.some((slot) => Number.isNaN(slot.start.getTime()))) {
-    return {
-      status: "error",
-      message: "Horário selecionado inválido. Atualize a página e tente novamente.",
-    };
+    return validationError(
+      audit,
+      "invalid_slot_timestamp",
+      "Horário selecionado inválido. Atualize a página e tente novamente.",
+    );
   }
 
   const uniqueSlots = Array.from(new Set(slots.map((slot) => slot.id)));
 
   if (uniqueSlots.length !== slots.length) {
-    return {
-      status: "error",
-      message: "Não é possível selecionar o mesmo horário mais de uma vez.",
-    };
+    return validationError(
+      audit,
+      "duplicate_slot",
+      "Não é possível selecionar o mesmo horário mais de uma vez.",
+    );
   }
 
   const systemRules = await getSystemRules();
@@ -257,17 +284,18 @@ export async function createReservationAction(
   });
 
   if (!slotsMatchSelectedDay) {
-    return {
-      status: "error",
-      message: "Todos os horários devem pertencer ao mesmo dia.",
-    };
+    return validationError(
+      audit,
+      "mismatched_dates",
+      "Todos os horários devem pertencer ao mesmo dia.",
+    );
   }
 
   const dayReservations = await getReservationsForDay({
     laboratoryId,
     date,
     timeZone: systemRules.timeZone,
-  });
+  }, { correlationId: audit.correlationId });
 
   const nonTeachingRule = findNonTeachingRuleForDate(
     date,
@@ -277,13 +305,13 @@ export async function createReservationAction(
 
   if (nonTeachingRule) {
     const reason = nonTeachingRule.description?.trim();
-    return {
-      status: "error",
-      message:
-        reason && reason.length > 0
-          ? `Este dia está marcado como não letivo (${reason}). Agende outra data.`
-          : "Este dia está marcado como não letivo. Agende outra data.",
-    };
+    return validationError(
+      audit,
+      "non_teaching_day",
+      reason && reason.length > 0
+        ? `Este dia está marcado como não letivo (${reason}). Agende outra data.`
+        : "Este dia está marcado como não letivo. Agende outra data.",
+    );
   }
 
   const schedule = buildDailySchedule({
@@ -304,10 +332,11 @@ export async function createReservationAction(
   const resolvedSlots = uniqueSlots.map((slotId) => slotsMap.get(slotId));
 
   if (resolvedSlots.some((slot) => !slot)) {
-    return {
-      status: "error",
-      message: "Um ou mais horários selecionados não estão mais disponíveis.",
-    };
+    return validationError(
+      audit,
+      "slot_no_longer_available",
+      "Um ou mais horários selecionados não estão mais disponíveis.",
+    );
   }
 
   const resolvedSlotEntries = resolvedSlots.map((slot) => slot!);
@@ -317,17 +346,19 @@ export async function createReservationAction(
   );
 
   if (resolvedSlotEntries.some((slot) => slot.isOccupied)) {
-    return {
-      status: "error",
-      message: "Um dos horários selecionados ficou indisponível. Atualize a agenda e tente novamente.",
-    };
+    return validationError(
+      audit,
+      "slot_occupied",
+      "Um dos horários selecionados ficou indisponível. Atualize a agenda e tente novamente.",
+    );
   }
 
   if (resolvedSlotEntries.some((slot) => slot.isPast)) {
-    return {
-      status: "error",
-      message: "Não é possível reservar horários que já passaram.",
-    };
+    return validationError(
+      audit,
+      "slot_in_past",
+      "Não é possível reservar horários que já passaram.",
+    );
   }
 
   const selectionSet = new Set(uniqueSlots);
@@ -349,10 +380,11 @@ export async function createReservationAction(
   const missingIntermediate = intermediateSlots.filter((slot) => !selectionSet.has(slot.id));
 
   if (missingIntermediate.length > 0) {
-    return {
-      status: "error",
-      message: "Selecione todos os horários intermediários entre o início e o fim da reserva.",
-    };
+    return validationError(
+      audit,
+      "missing_intermediate_slots",
+      "Selecione todos os horários intermediários entre o início e o fim da reserva.",
+    );
   }
 
   const reservationStart = new Date(firstSlot.startTime);
@@ -360,10 +392,13 @@ export async function createReservationAction(
   const subjectColumnSupport = await getSubjectColumnSupport();
 
   try {
-    await prisma.$transaction(async (tx) => {
-      let recurrenceId: string | null = null;
+    await audit.trackPrisma(
+      { model: "reservation", action: "$transaction", meta: { occurrences } },
+      () =>
+        prisma.$transaction(async (tx) => {
+          let recurrenceId: string | null = null;
 
-      if (occurrences > 1 && session.user.role !== Role.PROFESSOR) {
+          if (occurrences > 1 && session.user.role !== Role.PROFESSOR) {
         const recurrence = await tx.reservationRecurrence.create({
           data: {
             laboratoryId,
@@ -442,7 +477,8 @@ export async function createReservationAction(
           },
         });
       }
-    });
+        }),
+    );
   } catch (error) {
     if (error instanceof ReservationConflictError) {
       const formatted = new Intl.DateTimeFormat("pt-BR", {
@@ -450,13 +486,13 @@ export async function createReservationAction(
         timeStyle: "short",
       }).format(error.date);
 
-      return {
-        status: "error",
-        message:
-          error.kind === "user"
-            ? `Você já possui uma reserva confirmada para ${formatted} em outro laboratório. Cancele a reserva existente ou escolha outro horário.`
-            : `Já existe uma reserva confirmada para ${formatted}. Selecione outro horário.`,
-      };
+      return validationError(
+        audit,
+        error.kind === "user" ? "user_conflict" : "laboratory_conflict",
+        error.kind === "user"
+          ? `Você já possui uma reserva confirmada para ${formatted} em outro laboratório. Cancele a reserva existente ou escolha outro horário.`
+          : `Já existe uma reserva confirmada para ${formatted}. Selecione outro horário.`,
+      );
     }
 
     if (error instanceof NonTeachingDayError) {
@@ -465,19 +501,21 @@ export async function createReservationAction(
         timeStyle: undefined,
       }).format(error.date);
 
-      return {
-        status: "error",
-        message: error.reason
+      return validationError(
+        audit,
+        "non_teaching_day_recurrence",
+        error.reason
           ? `${formatted} está marcado como não letivo (${error.reason}). Ajuste a recorrência.`
           : `${formatted} está marcado como não letivo. Ajuste a recorrência.`,
-      };
+      );
     }
 
-    console.error("[scheduling] Failed to create reservation", error);
-    return {
-      status: "error",
-      message: "Não foi possível criar a reserva. Tente novamente mais tarde.",
-    };
+    audit.failure(error, { stage: "create_reservation" });
+    return validationError(
+      audit,
+      "reservation_creation_failed",
+      "Não foi possível criar a reserva. Tente novamente mais tarde.",
+    );
   }
 
   await notifyReservationConfirmed({
@@ -498,6 +536,7 @@ export async function createReservationAction(
       ? "Recorrência criada com sucesso. Todas as reservas foram confirmadas."
       : "Reserva confirmada com sucesso.";
 
+  audit.success({ laboratoryId, slotCount: uniqueSlots.length, occurrences });
   return { status: "success", message: successMessage };
 }
 
@@ -506,12 +545,24 @@ export async function cancelReservationAction(
   formData: FormData,
 ): Promise<ActionState> {
   const session = await auth();
+  const audit = createAuditSpan(
+    {
+      module: "scheduling",
+      action: "cancelReservationAction",
+      actorId: session?.user?.id,
+      actorRole: session?.user?.role,
+    },
+    { fieldCount: Array.from(formData.keys()).length },
+    "Received reservation cancellation request",
+    { importance: "high", persist: true },
+  );
 
   if (!session?.user) {
-    return {
-      status: "error",
-      message: "Você precisa estar autenticado para cancelar uma reserva.",
-    };
+    return validationError(
+      audit,
+      "not_authenticated",
+      "Você precisa estar autenticado para cancelar uma reserva.",
+    );
   }
 
   const parsed = cancelReservationSchema.safeParse({
@@ -521,28 +572,33 @@ export async function cancelReservationAction(
 
   if (!parsed.success) {
     const message = parsed.error.issues[0]?.message ?? "Não foi possível validar o cancelamento.";
-    return { status: "error", message };
+    return validationError(audit, "invalid_payload", message);
   }
 
   const { reservationId, reason } = parsed.data;
 
-  const reservation = await prisma.reservation.findUnique({
-    where: { id: reservationId },
-    select: {
-      id: true,
-      status: true,
-      createdById: true,
-      startTime: true,
-      endTime: true,
-      laboratory: { select: { name: true } },
-    },
-  });
+  const reservation = await audit.trackPrisma(
+    { model: "reservation", action: "findUnique", targetIds: reservationId },
+    () =>
+      prisma.reservation.findUnique({
+        where: { id: reservationId },
+        select: {
+          id: true,
+          status: true,
+          createdById: true,
+          startTime: true,
+          endTime: true,
+          laboratory: { select: { name: true } },
+        },
+      }),
+  );
 
   if (!reservation) {
-    return {
-      status: "error",
-      message: "Reserva não encontrada. Atualize a página e tente novamente.",
-    };
+    return validationError(
+      audit,
+      "reservation_not_found",
+      "Reserva não encontrada. Atualize a página e tente novamente.",
+    );
   }
 
   const canCancel =
@@ -551,13 +607,15 @@ export async function cancelReservationAction(
     reservation.createdById === session.user.id;
 
   if (!canCancel) {
-    return {
-      status: "error",
-      message: "Você não tem permissão para cancelar esta reserva.",
-    };
+    return validationError(
+      audit,
+      "forbidden",
+      "Você não tem permissão para cancelar esta reserva.",
+    );
   }
 
   if (reservation.status === ReservationStatus.CANCELLED) {
+    audit.info({ reservationId, alreadyCancelled: true });
     return {
       status: "success",
       message: "Esta reserva já havia sido cancelada anteriormente.",
@@ -567,20 +625,25 @@ export async function cancelReservationAction(
   const cancellationReason = reason ?? null;
 
   try {
-    await prisma.reservation.update({
-      where: { id: reservationId },
-      data: {
-        status: ReservationStatus.CANCELLED,
-        cancellationReason,
-        cancelledAt: new Date(),
-      },
-    });
+    await audit.trackPrisma(
+      { model: "reservation", action: "update", targetIds: reservationId },
+      () =>
+        prisma.reservation.update({
+          where: { id: reservationId },
+          data: {
+            status: ReservationStatus.CANCELLED,
+            cancellationReason,
+            cancelledAt: new Date(),
+          },
+        }),
+    );
   } catch (error) {
-    console.error("[scheduling] Failed to cancel reservation", error);
-    return {
-      status: "error",
-      message: "Não foi possível cancelar a reserva. Tente novamente mais tarde.",
-    };
+    audit.failure(error, { stage: "cancel_reservation" });
+    return validationError(
+      audit,
+      "cancel_failed",
+      "Não foi possível cancelar a reserva. Tente novamente mais tarde.",
+    );
   }
 
   await notifyReservationCancelled({
@@ -597,6 +660,7 @@ export async function cancelReservationAction(
   revalidatePath("/dashboard/scheduling/history");
   revalidatePath("/dashboard/scheduling/overview");
 
+  audit.success({ reservationId, reasonProvided: Boolean(reason) });
   return {
     status: "success",
     message: "Reserva cancelada com sucesso.",
@@ -608,15 +672,27 @@ export async function assignClassPeriodReservationAction(
   formData: FormData,
 ): Promise<ActionState> {
   const session = await auth();
+  const audit = createAuditSpan(
+    {
+      module: "scheduling",
+      action: "assignClassPeriodReservationAction",
+      actorId: session?.user?.id,
+      actorRole: session?.user?.role,
+    },
+    { fieldCount: Array.from(formData.keys()).length },
+    "Received class period scheduling request",
+    { importance: "high", persist: true },
+  );
 
   if (
     !session?.user ||
     (session.user.role !== Role.ADMIN && session.user.role !== Role.TECHNICIAN)
   ) {
-    return {
-      status: "error",
-      message: "Você não tem permissão para agendar períodos letivos.",
-    };
+    return validationError(
+      audit,
+      "forbidden",
+      "Você não tem permissão para agendar períodos letivos.",
+    );
   }
 
   const rawSlotIds = formData
@@ -633,45 +709,54 @@ export async function assignClassPeriodReservationAction(
 
   if (!parsed.success) {
     const message = parsed.error.issues[0]?.message ?? "Não foi possível validar os dados do agendamento.";
-    return { status: "error", message };
+    return validationError(audit, "invalid_payload", message);
   }
 
   const { teacherId, laboratoryId, date, subject, slotIds } = parsed.data;
 
-  const laboratory = await prisma.laboratory.findUnique({
-    where: { id: laboratoryId },
-    select: { name: true },
-  });
+  const laboratory = await audit.trackPrisma(
+    { model: "laboratory", action: "findUnique", targetIds: laboratoryId },
+    () =>
+      prisma.laboratory.findUnique({
+        where: { id: laboratoryId },
+        select: { name: true },
+      }),
+  );
 
   if (!laboratory) {
-    return { status: "error", message: "Laboratório não encontrado." };
+    return validationError(audit, "laboratory_not_found", "Laboratório não encontrado.");
   }
 
-  const teacher = await prisma.user.findUnique({
-    where: { id: teacherId },
-    select: {
-      id: true,
-      name: true,
-      role: true,
-    },
-  });
+  const teacher = await audit.trackPrisma(
+    { model: "user", action: "findUnique", targetIds: teacherId },
+    () =>
+      prisma.user.findUnique({
+        where: { id: teacherId },
+        select: {
+          id: true,
+          name: true,
+          role: true,
+        },
+      }),
+  );
 
   if (!teacher || teacher.role !== Role.PROFESSOR) {
-    return {
-      status: "error",
-      message: "Selecione um professor válido para o agendamento.",
-    };
+    return validationError(
+      audit,
+      "invalid_teacher",
+      "Selecione um professor válido para o agendamento.",
+    );
   }
 
   const systemRules = await getSystemRules();
   const academicPeriod = resolveAcademicPeriodConfig(systemRules);
 
   if (!academicPeriod) {
-    return {
-      status: "error",
-      message:
-        "Configure o período letivo nas regras do sistema antes de criar um agendamento completo.",
-    };
+    return validationError(
+      audit,
+      "missing_academic_period",
+      "Configure o período letivo nas regras do sistema antes de criar um agendamento completo.",
+    );
   }
 
   const uniqueSlots = Array.from(new Set(slotIds));
@@ -679,7 +764,7 @@ export async function assignClassPeriodReservationAction(
     laboratoryId,
     date,
     timeZone: systemRules.timeZone,
-  });
+  }, { correlationId: audit.correlationId });
 
   const nonTeachingRule = findNonTeachingRuleForDate(
     date,
@@ -689,13 +774,13 @@ export async function assignClassPeriodReservationAction(
 
   if (nonTeachingRule) {
     const reason = nonTeachingRule.description?.trim();
-    return {
-      status: "error",
-      message:
-        reason && reason.length > 0
-          ? `O dia selecionado está marcado como não letivo (${reason}). Escolha outra data inicial.`
-          : "O dia selecionado está marcado como não letivo. Escolha outra data inicial.",
-    };
+    return validationError(
+      audit,
+      "non_teaching_day",
+      reason && reason.length > 0
+        ? `O dia selecionado está marcado como não letivo (${reason}). Escolha outra data inicial.`
+        : "O dia selecionado está marcado como não letivo. Escolha outra data inicial.",
+    );
   }
 
   const schedule = buildDailySchedule({
@@ -716,10 +801,11 @@ export async function assignClassPeriodReservationAction(
   const resolvedSlots = uniqueSlots.map((slotId) => slotMap.get(slotId));
 
   if (resolvedSlots.some((slot) => !slot)) {
-    return {
-      status: "error",
-      message: "Um ou mais horários selecionados não estão mais disponíveis.",
-    };
+    return validationError(
+      audit,
+      "slot_no_longer_available",
+      "Um ou mais horários selecionados não estão mais disponíveis.",
+    );
   }
 
   const resolvedSlotEntries = resolvedSlots.map((slot) => slot!);
@@ -729,18 +815,19 @@ export async function assignClassPeriodReservationAction(
   );
 
   if (resolvedSlotEntries.some((slot) => slot.isOccupied)) {
-    return {
-      status: "error",
-      message:
-        "Um dos horários selecionados ficou indisponível. Atualize a agenda e tente novamente.",
-    };
+    return validationError(
+      audit,
+      "slot_occupied",
+      "Um dos horários selecionados ficou indisponível. Atualize a agenda e tente novamente.",
+    );
   }
 
   if (resolvedSlotEntries.some((slot) => slot.isPast)) {
-    return {
-      status: "error",
-      message: "Não é possível reservar horários que já passaram.",
-    };
+    return validationError(
+      audit,
+      "slot_in_past",
+      "Não é possível reservar horários que já passaram.",
+    );
   }
 
   const firstSlot = sortedResolvedSlots[0]!;
@@ -753,10 +840,11 @@ export async function assignClassPeriodReservationAction(
   const missingIntermediate = intermediateSlots.filter((slot) => !uniqueSlots.includes(slot.id));
 
   if (missingIntermediate.length > 0) {
-    return {
-      status: "error",
-      message: "Selecione todos os horários intermediários entre o início e o fim da reserva.",
-    };
+    return validationError(
+      audit,
+      "missing_intermediate_slots",
+      "Selecione todos os horários intermediários entre o início e o fim da reserva.",
+    );
   }
 
   const subjectColumnSupport = await getSubjectColumnSupport();
@@ -767,8 +855,11 @@ export async function assignClassPeriodReservationAction(
   const dayDuration = 7 * 24 * 60 * 60_000;
 
   try {
-    await prisma.$transaction(async (tx) => {
-      let recurrenceId: string | null = null;
+    await audit.trackPrisma(
+      { model: "reservation", action: "$transaction", meta: { occurrences } },
+      () =>
+        prisma.$transaction(async (tx) => {
+          let recurrenceId: string | null = null;
 
       if (occurrences > 1) {
         const recurrence = await tx.reservationRecurrence.create({
@@ -844,7 +935,8 @@ export async function assignClassPeriodReservationAction(
           },
         });
       }
-    });
+        }),
+    );
   } catch (error) {
     if (error instanceof ReservationConflictError) {
       const formatted = new Intl.DateTimeFormat("pt-BR", {
@@ -852,13 +944,13 @@ export async function assignClassPeriodReservationAction(
         timeStyle: "short",
       }).format(error.date);
 
-      return {
-        status: "error",
-        message:
-          error.kind === "user"
-            ? `O professor selecionado já possui uma reserva confirmada para ${formatted} em outro laboratório. Ajuste a seleção de horários.`
-            : `Já existe uma reserva confirmada para ${formatted}. Ajuste a seleção de horários.`,
-      };
+      return validationError(
+        audit,
+        error.kind === "user" ? "teacher_conflict" : "laboratory_conflict",
+        error.kind === "user"
+          ? `O professor selecionado já possui uma reserva confirmada para ${formatted} em outro laboratório. Ajuste a seleção de horários.`
+          : `Já existe uma reserva confirmada para ${formatted}. Ajuste a seleção de horários.`,
+      );
     }
 
     if (error instanceof NonTeachingDayError) {
@@ -866,19 +958,21 @@ export async function assignClassPeriodReservationAction(
         dateStyle: "long",
       }).format(error.date);
 
-      return {
-        status: "error",
-        message: error.reason
+      return validationError(
+        audit,
+        "non_teaching_day_recurrence",
+        error.reason
           ? `${formatted} está marcado como não letivo (${error.reason}). Ajuste a recorrência.`
           : `${formatted} está marcado como não letivo. Ajuste a recorrência.`,
-      };
+      );
     }
 
-    console.error("[scheduling] Failed to assign class period reservation", error);
-    return {
-      status: "error",
-      message: "Não foi possível completar o agendamento do período letivo. Tente novamente mais tarde.",
-    };
+    audit.failure(error, { stage: "assign_class_period" });
+    return validationError(
+      audit,
+      "assign_failed",
+      "Não foi possível completar o agendamento do período letivo. Tente novamente mais tarde.",
+    );
   }
 
   await notifyReservationConfirmed({
@@ -902,6 +996,7 @@ export async function assignClassPeriodReservationAction(
   revalidatePath("/dashboard/scheduling/history");
   revalidatePath("/dashboard/scheduling/overview");
 
+  audit.success({ laboratoryId, teacherId, slotCount: uniqueSlots.length, occurrences });
   return {
     status: "success",
     message: `Reservas cadastradas para ${teacher.name} ao longo de ${occurrences} semana${occurrences > 1 ? "s" : ""}.`,

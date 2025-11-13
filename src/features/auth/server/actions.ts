@@ -11,6 +11,7 @@ import { z } from "zod";
 
 import { auth, signIn, signOut } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { createAuditSpan } from "@/lib/logging/audit";
 import { notifyAuthEvent, notifyEntityAction } from "@/features/notifications/server/triggers";
 
 export type AuthActionState = {
@@ -92,6 +93,18 @@ export async function loginAction(
   _prevState: AuthActionState,
   formData: FormData,
 ): Promise<AuthActionState> {
+  const audit = createAuditSpan(
+    {
+      module: "auth",
+      action: "loginAction",
+    },
+    {
+      hasCallbackUrl: Boolean(formData.get("callbackUrl")),
+      emailProvided: typeof formData.get("email") === "string",
+    },
+    "Processing credential login",
+    { importance: "high", persist: true },
+  );
   const parsed = loginSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
@@ -100,14 +113,19 @@ export async function loginAction(
 
   if (!parsed.success) {
     const message = parsed.error.issues[0]?.message ?? "Não foi possível validar os dados.";
+    audit.validationFailure({ reason: "invalid_payload" });
     return { status: "error", message, statusCode: 400 };
   }
 
   const callbackUrl = parsed.data.callbackUrl ?? "/dashboard";
-  const userRecord = await prisma.user.findUnique({
-    where: { email: parsed.data.email },
-    select: { id: true },
-  });
+  const userRecord = await audit.trackPrisma(
+    { model: "user", action: "findUnique", targetIds: parsed.data.email },
+    () =>
+      prisma.user.findUnique({
+        where: { email: parsed.data.email },
+        select: { id: true },
+      }),
+  );
 
   try {
     const redirectUrl = await signIn("credentials", {
@@ -122,6 +140,7 @@ export async function loginAction(
       const url = new URL(redirectUrl, baseUrl);
 
       if (url.searchParams.get("error") === "CredentialsSignin") {
+        audit.validationFailure({ reason: "invalid_credentials" });
         return {
           status: "error",
           message: "E-mail ou senha inválidos.",
@@ -133,6 +152,7 @@ export async function loginAction(
         await notifyAuthEvent({ userId: userRecord.id, event: "login" });
       }
 
+      audit.success({ userId: userRecord?.id ?? null, redirectUrl });
       redirect(redirectUrl);
     }
 
@@ -140,10 +160,12 @@ export async function loginAction(
       await notifyAuthEvent({ userId: userRecord.id, event: "login" });
     }
 
+    audit.success({ userId: userRecord?.id ?? null });
     return { status: "success", statusCode: 200 };
   } catch (error) {
     if (error instanceof AuthError) {
       if (error.type === "CredentialsSignin") {
+        audit.validationFailure({ reason: "invalid_credentials" });
         return {
           status: "error",
           message: "E-mail ou senha inválidos.",
@@ -151,6 +173,7 @@ export async function loginAction(
         };
       }
 
+      audit.failure(error, { stage: "signIn" });
       return {
         status: "error",
         message: "Não foi possível iniciar a sessão. Tente novamente.",
@@ -158,6 +181,7 @@ export async function loginAction(
       };
     }
 
+    audit.failure(error, { stage: "loginAction" });
     throw error;
   }
 }
@@ -165,11 +189,24 @@ export async function loginAction(
 export async function signOutAction() {
   const session = await auth();
 
+  const audit = createAuditSpan(
+    {
+      module: "auth",
+      action: "signOutAction",
+      actorId: session?.user?.id,
+      actorRole: session?.user?.role,
+    },
+    undefined,
+    "Processing sign out",
+    { importance: "normal", persist: true },
+  );
+
   if (session?.user) {
     await notifyAuthEvent({ userId: session.user.id, event: "logout" });
   }
 
   await signOut({ redirectTo: "/login", redirect: false });
+  audit.success({ userId: session?.user?.id ?? null });
   redirect("/login");
 }
 
@@ -184,9 +221,23 @@ export async function requestPasswordResetAction(
     return { status: "error", message };
   }
 
-  const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
+  const audit = createAuditSpan(
+    {
+      module: "auth",
+      action: "requestPasswordResetAction",
+    },
+    { emailProvided: parsed.data.email },
+    "Processing password reset request",
+    { importance: "high", persist: true },
+  );
+
+  const user = await audit.trackPrisma(
+    { model: "user", action: "findUnique", targetIds: parsed.data.email },
+    () => prisma.user.findUnique({ where: { email: parsed.data.email } }),
+  );
 
   if (!user) {
+    audit.info({ userFound: false });
     return {
       status: "success",
       message: "Se o e-mail estiver cadastrado, enviaremos as instruções em instantes.",
@@ -197,22 +248,29 @@ export async function requestPasswordResetAction(
   const hashedToken = createHash("sha256").update(rawToken).digest("hex");
   const expiresAt = new Date(Date.now() + 1000 * 60 * 60); // 1 hora
 
-  await prisma.passwordResetToken.deleteMany({ where: { userId: user.id } });
+  await audit.trackPrisma(
+    { model: "passwordResetToken", action: "deleteMany", targetIds: user.id },
+    () => prisma.passwordResetToken.deleteMany({ where: { userId: user.id } }),
+  );
 
-  await prisma.passwordResetToken.create({
-    data: {
-      token: hashedToken,
-      userId: user.id,
-      expiresAt,
-    },
-  });
+  await audit.trackPrisma(
+    { model: "passwordResetToken", action: "create", targetIds: user.id },
+    () =>
+      prisma.passwordResetToken.create({
+        data: {
+          token: hashedToken,
+          userId: user.id,
+          expiresAt,
+        },
+      }),
+  );
 
   const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
-  const resetLink = `${baseUrl}/reset-password/${rawToken}`;
 
-  // TODO: send email with reset link instead of logging it on console
-  console.info("[auth] password reset link", resetLink);
+  // TODO: send email with the reset link below instead of logging it on console
+  audit.info({ userId: user.id, resetUrlTemplate: `${baseUrl}/reset-password/[token]` }, "Password reset token generated");
 
+  audit.success({ userId: user.id });
   return {
     status: "success",
     message: "Se o e-mail estiver cadastrado, enviaremos as instruções em instantes.",
@@ -234,13 +292,27 @@ export async function resetPasswordAction(
     return { status: "error", message };
   }
 
+  const audit = createAuditSpan(
+    {
+      module: "auth",
+      action: "resetPasswordAction",
+    },
+    undefined,
+    "Processing password reset",
+    { importance: "high", persist: true },
+  );
   const hashedToken = createHash("sha256").update(parsed.data.token).digest("hex");
 
-  const tokenRecord = await prisma.passwordResetToken.findUnique({
-    where: { token: hashedToken },
-  });
+  const tokenRecord = await audit.trackPrisma(
+    { model: "passwordResetToken", action: "findUnique" },
+    () =>
+      prisma.passwordResetToken.findUnique({
+        where: { token: hashedToken },
+      }),
+  );
 
   if (!tokenRecord || tokenRecord.expiresAt.getTime() < Date.now()) {
+    audit.validationFailure({ reason: "invalid_or_expired_token" });
     return {
       status: "error",
       message: "O link de recuperação é inválido ou expirou.",
@@ -249,14 +321,19 @@ export async function resetPasswordAction(
 
   const newPasswordHash = await hash(parsed.data.password, 12);
 
-  await prisma.$transaction([
-    prisma.user.update({
-      where: { id: tokenRecord.userId },
-      data: { passwordHash: newPasswordHash },
-    }),
-    prisma.passwordResetToken.deleteMany({ where: { userId: tokenRecord.userId } }),
-  ]);
+  await audit.trackPrisma(
+    { model: "passwordResetToken", action: "$transaction", targetIds: tokenRecord.userId },
+    () =>
+      prisma.$transaction([
+        prisma.user.update({
+          where: { id: tokenRecord.userId },
+          data: { passwordHash: newPasswordHash },
+        }),
+        prisma.passwordResetToken.deleteMany({ where: { userId: tokenRecord.userId } }),
+      ]),
+  );
 
+  audit.success({ userId: tokenRecord.userId });
   redirect("/login?reset=success");
 }
 
@@ -266,7 +343,20 @@ export async function updateProfileAction(
 ): Promise<AuthActionState> {
   const session = await auth();
 
+  const audit = createAuditSpan(
+    {
+      module: "auth",
+      action: "updateProfileAction",
+      actorId: session?.user?.id,
+      actorRole: session?.user?.role,
+    },
+    { fieldCount: Array.from(formData.keys()).length },
+    "Updating profile",
+    { importance: "normal", persist: true },
+  );
+
   if (!session?.user) {
+    audit.validationFailure({ reason: "not_authenticated" });
     return { status: "error", message: "Você precisa estar autenticado." };
   }
 
@@ -280,12 +370,17 @@ export async function updateProfileAction(
 
   if (!parsed.success) {
     const message = parsed.error.issues[0]?.message ?? "Não foi possível validar os dados.";
+    audit.validationFailure({ reason: "invalid_payload", issues: parsed.error.issues.length });
     return { status: "error", message };
   }
 
-  const user = await prisma.user.findUnique({ where: { id: session.user.id } });
+  const user = await audit.trackPrisma(
+    { model: "user", action: "findUnique", targetIds: session.user.id },
+    () => prisma.user.findUnique({ where: { id: session.user.id } }),
+  );
 
   if (!user) {
+    audit.validationFailure({ reason: "user_not_found", userId: session.user.id });
     return { status: "error", message: "Usuário não encontrado." };
   }
 
@@ -293,32 +388,39 @@ export async function updateProfileAction(
     const isValid = await compare(parsed.data.currentPassword ?? "", user.passwordHash);
 
     if (!isValid) {
+      audit.validationFailure({ reason: "invalid_current_password" });
       return { status: "error", message: "A senha atual informada é inválida." };
     }
   }
 
   try {
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        name: parsed.data.name,
-        email: parsed.data.email,
-        ...(parsed.data.newPassword && {
-          passwordHash: await hash(parsed.data.newPassword, 12),
+    await audit.trackPrisma(
+      { model: "user", action: "update", targetIds: user.id },
+      async () =>
+        prisma.user.update({
+          where: { id: user.id },
+          data: {
+            name: parsed.data.name,
+            email: parsed.data.email,
+            ...(parsed.data.newPassword && {
+              passwordHash: await hash(parsed.data.newPassword, 12),
+            }),
+          },
         }),
-      },
-    });
+    );
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"
     ) {
+      audit.validationFailure({ reason: "duplicate_email" });
       return {
         status: "error",
         message: "Já existe um usuário com este e-mail.",
       };
     }
 
+    audit.failure(error, { stage: "update_profile" });
     throw error;
   }
 
@@ -332,5 +434,6 @@ export async function updateProfileAction(
   revalidatePath("/profile");
   revalidatePath("/dashboard");
 
+  audit.success({ userId: user.id });
   return { status: "success", message: "Perfil atualizado com sucesso." };
 }

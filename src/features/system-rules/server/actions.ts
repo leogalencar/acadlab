@@ -8,6 +8,7 @@ import { Role } from "@prisma/client";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { createAuditSpan } from "@/lib/logging/audit";
 import {
   DEFAULT_SYSTEM_RULES,
   MINUTES_PER_DAY,
@@ -371,11 +372,25 @@ export async function updateSystemRulesAction(
 ): Promise<SystemRulesActionState> {
   const session = await auth();
 
+  const audit = createAuditSpan(
+    {
+      module: "system-rules",
+      action: "updateSystemRulesAction",
+      actorId: session?.user?.id,
+      actorRole: session?.user?.role,
+    },
+    { fieldCount: Array.from(formData.keys()).length },
+    "Received request to update system rules",
+    { importance: "high", persist: true },
+  );
+
   if (!session?.user) {
+    audit.validationFailure({ reason: "not_authenticated" });
     return { status: "error", message: "Você precisa estar autenticado." };
   }
 
   if (session.user.role !== Role.ADMIN) {
+    audit.validationFailure({ reason: "forbidden", role: session.user.role });
     return {
       status: "error",
       message: "Apenas administradores podem editar as regras do sistema.",
@@ -410,15 +425,20 @@ export async function updateSystemRulesAction(
 
   if (!parsed.success) {
     const message = parsed.error.issues[0]?.message ?? "Não foi possível validar as informações.";
+    audit.validationFailure({ reason: "invalid_payload", issues: parsed.error.issues.length });
     return { status: "error", message };
   }
 
   const data = parsed.data;
 
-  const brandingRecord = await prisma.systemRule.findUnique({
-    where: { name: SYSTEM_RULE_NAMES.BRANDING },
-    select: { value: true },
-  });
+  const brandingRecord = await audit.trackPrisma(
+    { model: "systemRule", action: "findUnique", targetIds: SYSTEM_RULE_NAMES.BRANDING },
+    () =>
+      prisma.systemRule.findUnique({
+        where: { name: SYSTEM_RULE_NAMES.BRANDING },
+        select: { value: true },
+      }),
+  );
 
   const currentBranding = parseBrandingRecord(brandingRecord?.value) ?? DEFAULT_SYSTEM_RULES.branding;
 
@@ -431,14 +451,17 @@ export async function updateSystemRulesAction(
     const file = formData.get("logoFile");
 
     if (!(file instanceof File) || file.size === 0) {
+      audit.validationFailure({ reason: "invalid_logo_file" });
       return { status: "error", message: "Selecione um arquivo de imagem válido para o logotipo." };
     }
 
     if (file.size > 256_000) {
+      audit.validationFailure({ reason: "logo_too_large", size: file.size });
       return { status: "error", message: "O logotipo deve ter no máximo 256 KB." };
     }
 
     if (!isSupportedImageType(file.type)) {
+      audit.validationFailure({ reason: "unsupported_logo_type", type: file.type });
       return {
         status: "error",
         message: "Utilize um arquivo PNG, JPG ou SVG para o logotipo.",
@@ -449,7 +472,7 @@ export async function updateSystemRulesAction(
       const buffer = Buffer.from(await file.arrayBuffer());
       logoUrlForPersistence = `data:${file.type};base64,${buffer.toString("base64")}`;
     } catch (error) {
-      console.error("[system-rules] Failed to process logo upload", error);
+      audit.failure(error, { stage: "process_logo_upload" });
       return {
         status: "error",
         message: "Não foi possível processar o arquivo de logotipo enviado.",
@@ -505,12 +528,15 @@ export async function updateSystemRulesAction(
   };
 
   try {
-    await prisma.$transaction([
-      prisma.systemRule.upsert({
-        where: { name: SYSTEM_RULE_NAMES.COLORS },
-        update: { value: colorsPayload },
-        create: {
-          name: SYSTEM_RULE_NAMES.COLORS,
+    await audit.trackPrisma(
+      { model: "systemRule", action: "$transaction", meta: { operations: 4 } },
+      () =>
+        prisma.$transaction([
+          prisma.systemRule.upsert({
+            where: { name: SYSTEM_RULE_NAMES.COLORS },
+            update: { value: colorsPayload },
+            create: {
+              name: SYSTEM_RULE_NAMES.COLORS,
           value: colorsPayload,
         },
       }),
@@ -533,14 +559,15 @@ export async function updateSystemRulesAction(
       prisma.systemRule.upsert({
         where: { name: SYSTEM_RULE_NAMES.EMAIL_DOMAINS },
         update: { value: emailDomainsPayload },
-        create: {
-          name: SYSTEM_RULE_NAMES.EMAIL_DOMAINS,
-          value: emailDomainsPayload,
-        },
-      }),
-    ]);
+            create: {
+              name: SYSTEM_RULE_NAMES.EMAIL_DOMAINS,
+              value: emailDomainsPayload,
+            },
+          }),
+        ]),
+    );
   } catch (error) {
-    console.error("[system-rules] Failed to update rules", error);
+    audit.failure(error, { stage: "persist_rules" });
     return {
       status: "error",
       message: "Não foi possível salvar as regras do sistema. Tente novamente mais tarde.",
@@ -558,6 +585,8 @@ export async function updateSystemRulesAction(
   revalidatePath("/system-rules");
   revalidatePath("/", "layout");
   revalidatePath("/users");
+
+  audit.success({ institution: data.institutionName.trim() }, "Regras do sistema atualizadas");
 
   return {
     status: "success",

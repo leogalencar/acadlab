@@ -1,6 +1,7 @@
 import { LaboratoryStatus, Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { createAuditSpan } from "@/lib/logging/audit";
 
 import type {
   LaboratoryFiltersState,
@@ -108,46 +109,87 @@ export async function getLaboratoriesWithFilters({
   const perPage = Math.max(1, pagination.perPage);
   const skip = (page - 1) * perPage;
 
-  const [total, laboratories] = await Promise.all([
-    prisma.laboratory.count({ where }),
-    prisma.laboratory.findMany({
-      where,
-      orderBy,
-      skip,
-      take: perPage,
-      include: {
-        softwareAssociations: {
-          include: {
-            software: true,
-            installedBy: { select: { id: true, name: true } },
-          },
-          orderBy: { software: { name: "asc" } },
-        },
+  const audit = createAuditSpan(
+    { module: "lab-management", action: "getLaboratoriesWithFilters" },
+    {
+      filters: {
+        softwareCount: softwareIds.length,
+        statusCount: statuses.length,
+        hasCapacity: typeof capacity === "number",
+        hasSearch: Boolean(searchTerm),
+        hasDateRange: Boolean(updatedFrom || updatedTo),
       },
-    }),
-  ]);
+      sorting,
+      pagination: { page, perPage },
+    },
+    "Preparing laboratory search",
+    { importance: "low", logStart: false, logSuccess: false },
+  );
 
-  return {
-    total,
-    laboratories: laboratories.map((laboratory) => ({
-      id: laboratory.id,
-      name: laboratory.name,
-      capacity: laboratory.capacity,
-      status: laboratory.status,
-      description: laboratory.description,
-      createdAt: laboratory.createdAt.toISOString(),
-      updatedAt: laboratory.updatedAt.toISOString(),
-      software: laboratory.softwareAssociations.map((association) => ({
-        softwareId: association.softwareId,
-        name: association.software.name,
-        version: association.software.version,
-        supplier: association.software.supplier,
-        installedAt: association.installedAt.toISOString(),
-        installedByName: association.installedBy?.name ?? null,
-        installedById: association.installedBy?.id ?? null,
+  try {
+    const [total, laboratories] = await Promise.all([
+      audit.trackPrisma(
+        {
+          model: "laboratory",
+          action: "count",
+          meta: { hasFilter: Boolean(where) },
+        },
+        () => prisma.laboratory.count({ where }),
+      ),
+      audit.trackPrisma(
+        {
+          model: "laboratory",
+          action: "findMany",
+          meta: { skip, take: perPage },
+        },
+        () =>
+          prisma.laboratory.findMany({
+            where,
+            orderBy,
+            skip,
+            take: perPage,
+            include: {
+              softwareAssociations: {
+                include: {
+                  software: true,
+                  installedBy: { select: { id: true, name: true } },
+                },
+                orderBy: { software: { name: "asc" } },
+              },
+            },
+          }),
+      ),
+    ]);
+
+    const result = {
+      total,
+      laboratories: laboratories.map((laboratory) => ({
+        id: laboratory.id,
+        name: laboratory.name,
+        capacity: laboratory.capacity,
+        status: laboratory.status,
+        description: laboratory.description,
+        createdAt: laboratory.createdAt.toISOString(),
+        updatedAt: laboratory.updatedAt.toISOString(),
+        software: laboratory.softwareAssociations.map((association) => ({
+          softwareId: association.softwareId,
+          name: association.software.name,
+          version: association.software.version,
+          supplier: association.software.supplier,
+          installedAt: association.installedAt.toISOString(),
+          installedByName: association.installedBy?.name ?? null,
+          installedById: association.installedBy?.id ?? null,
+        })),
       })),
-    })),
-  };
+    };
+
+    audit.success({ total, returned: result.laboratories.length }, "Laboratories fetched");
+
+    return result;
+  } catch (error) {
+    audit.failure(error, { stage: "getLaboratoriesWithFilters" });
+    throw error;
+  }
 }
 
 export function buildFiltersState(

@@ -6,6 +6,7 @@ import { SoftwareRequestStatus, UserStatus } from "@prisma/client";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { createAuditSpan } from "@/lib/logging/audit";
 import { canManageSoftwareRequests } from "@/features/software-requests/types";
 import { MANAGER_ROLES } from "@/features/shared/roles";
 import type { ActionState } from "@/features/shared/types";
@@ -72,7 +73,20 @@ export async function createSoftwareRequestAction(
 ): Promise<ActionState> {
   const session = await auth();
 
+  const audit = createAuditSpan(
+    {
+      module: "software-requests",
+      action: "createSoftwareRequestAction",
+      actorId: session?.user?.id,
+      actorRole: session?.user?.role,
+    },
+    { fieldCount: Array.from(formData.keys()).length },
+    "Received request to create software request",
+    { importance: "high", persist: true },
+  );
+
   if (!session?.user) {
+    audit.validationFailure({ reason: "not_authenticated" });
     return notAuthenticated;
   }
 
@@ -85,15 +99,21 @@ export async function createSoftwareRequestAction(
 
   if (!parsed.success) {
     const message = parsed.error.issues[0]?.message ?? "Não foi possível validar os dados informados.";
+    audit.validationFailure({ reason: "invalid_payload", issues: parsed.error.issues.length });
     return { status: "error", message };
   }
 
-  const laboratory = await prisma.laboratory.findUnique({
-    where: { id: parsed.data.laboratoryId },
-    select: { id: true, name: true },
-  });
+  const laboratory = await audit.trackPrisma(
+    { model: "laboratory", action: "findUnique", targetIds: parsed.data.laboratoryId },
+    () =>
+      prisma.laboratory.findUnique({
+        where: { id: parsed.data.laboratoryId },
+        select: { id: true, name: true },
+      }),
+  );
 
   if (!laboratory) {
+    audit.validationFailure({ reason: "laboratory_not_found", laboratoryId: parsed.data.laboratoryId });
     return { status: "error", message: "Laboratório não encontrado." };
   }
 
@@ -101,15 +121,19 @@ export async function createSoftwareRequestAction(
     ? `${parsed.data.softwareName} • ${parsed.data.softwareVersion}`
     : parsed.data.softwareName;
 
-  await prisma.softwareRequest.create({
-    data: {
-      laboratoryId: parsed.data.laboratoryId,
-      softwareName: parsed.data.softwareName,
-      softwareVersion: parsed.data.softwareVersion,
-      justification: parsed.data.justification,
-      requesterId: session.user.id,
-    },
-  });
+  await audit.trackPrisma(
+    { model: "softwareRequest", action: "create" },
+    () =>
+      prisma.softwareRequest.create({
+        data: {
+          laboratoryId: parsed.data.laboratoryId,
+          softwareName: parsed.data.softwareName,
+          softwareVersion: parsed.data.softwareVersion,
+          justification: parsed.data.justification,
+          requesterId: session.user.id,
+        },
+      }),
+  );
 
   await notifyEntityAction({
     userId: session.user.id,
@@ -119,7 +143,7 @@ export async function createSoftwareRequestAction(
     type: "create",
   });
 
-  const recipientIds = await resolveManagerRecipientIds(session.user.id);
+  const recipientIds = await resolveManagerRecipientIds(session.user.id, audit.correlationId);
 
   if (recipientIds.length > 0) {
     await notifySoftwareRequestCreatedForManagers({
@@ -133,6 +157,15 @@ export async function createSoftwareRequestAction(
 
   await revalidateSoftwareRequestRoutes();
 
+  audit.success(
+    {
+      softwareName: parsed.data.softwareName,
+      laboratoryId: parsed.data.laboratoryId,
+      recipients: recipientIds.length,
+    },
+    "Solicitação de software criada",
+  );
+
   return { status: "success", message: "Solicitação registrada com sucesso." };
 }
 
@@ -142,11 +175,25 @@ export async function updateSoftwareRequestStatusAction(
 ): Promise<ActionState> {
   const session = await auth();
 
+  const audit = createAuditSpan(
+    {
+      module: "software-requests",
+      action: "updateSoftwareRequestStatusAction",
+      actorId: session?.user?.id,
+      actorRole: session?.user?.role,
+    },
+    { fieldCount: Array.from(formData.keys()).length },
+    "Received request to update software request status",
+    { importance: "high", persist: true },
+  );
+
   if (!session?.user) {
+    audit.validationFailure({ reason: "not_authenticated" });
     return notAuthenticated;
   }
 
   if (!canManageSoftwareRequests(session.user.role)) {
+    audit.validationFailure({ reason: "forbidden", role: session.user.role });
     return notAuthorized;
   }
 
@@ -158,43 +205,62 @@ export async function updateSoftwareRequestStatusAction(
 
   if (!parsed.success) {
     const message = parsed.error.issues[0]?.message ?? "Não foi possível validar os dados informados.";
+    audit.validationFailure({ reason: "invalid_payload", issues: parsed.error.issues.length });
     return { status: "error", message };
   }
 
   if (parsed.data.status === SoftwareRequestStatus.CANCELLED) {
+    audit.validationFailure({ reason: "invalid_status_transition" });
     return {
       status: "error",
       message: "Use o cancelamento disponível para o solicitante.",
     };
   }
 
-  const existing = await prisma.softwareRequest.findUnique({
-    where: { id: parsed.data.requestId },
-    select: {
-      id: true,
-      requesterId: true,
-      softwareName: true,
-      softwareVersion: true,
-      laboratory: { select: { name: true } },
+  const existing = await audit.trackPrisma(
+    {
+      model: "softwareRequest",
+      action: "findUnique",
+      targetIds: parsed.data.requestId,
     },
-  });
+    () =>
+      prisma.softwareRequest.findUnique({
+        where: { id: parsed.data.requestId },
+        select: {
+          id: true,
+          requesterId: true,
+          softwareName: true,
+          softwareVersion: true,
+          laboratory: { select: { name: true } },
+        },
+      }),
+  );
 
   if (!existing) {
+    audit.validationFailure({ reason: "request_not_found", requestId: parsed.data.requestId });
     return { status: "error", message: "Solicitação não encontrada." };
   }
 
   const { status, responseNotes } = parsed.data;
   const isPending = status === SoftwareRequestStatus.PENDING;
 
-  await prisma.softwareRequest.update({
-    where: { id: parsed.data.requestId },
-    data: {
-      status,
-      responseNotes: responseNotes ?? null,
-      reviewerId: isPending ? null : session.user.id,
-      reviewedAt: isPending ? null : new Date(),
+  await audit.trackPrisma(
+    {
+      model: "softwareRequest",
+      action: "update",
+      targetIds: parsed.data.requestId,
     },
-  });
+    () =>
+      prisma.softwareRequest.update({
+        where: { id: parsed.data.requestId },
+        data: {
+          status,
+          responseNotes: responseNotes ?? null,
+          reviewerId: isPending ? null : session.user.id,
+          reviewedAt: isPending ? null : new Date(),
+        },
+      }),
+  );
 
   const softwareLabel = existing.softwareVersion
     ? `${existing.softwareName} • ${existing.softwareVersion}`
@@ -221,6 +287,8 @@ export async function updateSoftwareRequestStatusAction(
 
   await revalidateSoftwareRequestRoutes();
 
+  audit.success({ requestId: parsed.data.requestId, status }, "Status da solicitação atualizado");
+
   return { status: "success", message: "Status da solicitação atualizado." };
 }
 
@@ -230,7 +298,20 @@ export async function cancelSoftwareRequestAction(
 ): Promise<ActionState> {
   const session = await auth();
 
+  const audit = createAuditSpan(
+    {
+      module: "software-requests",
+      action: "cancelSoftwareRequestAction",
+      actorId: session?.user?.id,
+      actorRole: session?.user?.role,
+    },
+    { fieldCount: Array.from(formData.keys()).length },
+    "Received request to cancel software request",
+    { importance: "high", persist: true },
+  );
+
   if (!session?.user) {
+    audit.validationFailure({ reason: "not_authenticated" });
     return notAuthenticated;
   }
 
@@ -241,26 +322,37 @@ export async function cancelSoftwareRequestAction(
 
   if (!parsed.success) {
     const message = parsed.error.issues[0]?.message ?? "Não foi possível validar a solicitação.";
+    audit.validationFailure({ reason: "invalid_payload", issues: parsed.error.issues.length });
     return { status: "error", message };
   }
 
-  const existing = await prisma.softwareRequest.findUnique({
-    where: { id: parsed.data.requestId },
-    select: {
-      id: true,
-      requesterId: true,
-      status: true,
-      softwareName: true,
-      softwareVersion: true,
-      laboratory: { select: { name: true } },
+  const existing = await audit.trackPrisma(
+    {
+      model: "softwareRequest",
+      action: "findUnique",
+      targetIds: parsed.data.requestId,
     },
-  });
+    () =>
+      prisma.softwareRequest.findUnique({
+        where: { id: parsed.data.requestId },
+        select: {
+          id: true,
+          requesterId: true,
+          status: true,
+          softwareName: true,
+          softwareVersion: true,
+          laboratory: { select: { name: true } },
+        },
+      }),
+  );
 
   if (!existing) {
+    audit.validationFailure({ reason: "request_not_found", requestId: parsed.data.requestId });
     return { status: "error", message: "Solicitação não encontrada." };
   }
 
   if (existing.requesterId !== session.user.id) {
+    audit.validationFailure({ reason: "forbidden_requester", ownerId: existing.requesterId });
     return {
       status: "error",
       message: "Você só pode cancelar solicitações registradas por você.",
@@ -268,21 +360,30 @@ export async function cancelSoftwareRequestAction(
   }
 
   if (existing.status !== SoftwareRequestStatus.PENDING) {
+    audit.validationFailure({ reason: "non_pending_request" });
     return {
       status: "error",
       message: "Somente solicitações pendentes podem ser canceladas.",
     };
   }
 
-  await prisma.softwareRequest.update({
-    where: { id: existing.id },
-    data: {
-      status: SoftwareRequestStatus.CANCELLED,
-      responseNotes: parsed.data.reason ?? null,
-      reviewerId: null,
-      reviewedAt: new Date(),
+  await audit.trackPrisma(
+    {
+      model: "softwareRequest",
+      action: "update",
+      targetIds: existing.id,
     },
-  });
+    () =>
+      prisma.softwareRequest.update({
+        where: { id: existing.id },
+        data: {
+          status: SoftwareRequestStatus.CANCELLED,
+          responseNotes: parsed.data.reason ?? null,
+          reviewerId: null,
+          reviewedAt: new Date(),
+        },
+      }),
+  );
 
   const softwareLabel = existing.softwareVersion
     ? `${existing.softwareName} • ${existing.softwareVersion}`
@@ -296,7 +397,7 @@ export async function cancelSoftwareRequestAction(
     type: "delete",
   });
 
-  const recipientIds = await resolveManagerRecipientIds(session.user.id);
+  const recipientIds = await resolveManagerRecipientIds(session.user.id, audit.correlationId);
 
   if (recipientIds.length > 0) {
     await notifySoftwareRequestCancelledForManagers({
@@ -310,6 +411,8 @@ export async function cancelSoftwareRequestAction(
 
   await revalidateSoftwareRequestRoutes();
 
+  audit.success({ requestId: existing.id, recipients: recipientIds.length }, "Solicitação cancelada");
+
   return { status: "success", message: "Solicitação cancelada com sucesso." };
 }
 
@@ -318,15 +421,41 @@ async function revalidateSoftwareRequestRoutes() {
   revalidatePath("/dashboard");
 }
 
-async function resolveManagerRecipientIds(excludeUserId?: string): Promise<string[]> {
-  const recipients = await prisma.user.findMany({
-    where: {
-      role: { in: MANAGER_ROLES },
-      status: UserStatus.ACTIVE,
-      ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
+async function resolveManagerRecipientIds(excludeUserId?: string, correlationId?: string): Promise<string[]> {
+  const audit = createAuditSpan(
+    {
+      module: "software-requests",
+      action: "resolveManagerRecipientIds",
+      correlationId,
     },
-    select: { id: true },
-  });
+    { excludeUser: Boolean(excludeUserId) },
+    "Resolving manager recipients",
+    { importance: "low", logStart: false, logSuccess: false },
+  );
 
-  return Array.from(new Set(recipients.map((entry) => entry.id)));
+  try {
+    const recipients = await audit.trackPrisma(
+      {
+        model: "user",
+        action: "findMany",
+        meta: { roleFilter: "MANAGER" },
+      },
+      () =>
+        prisma.user.findMany({
+          where: {
+            role: { in: MANAGER_ROLES },
+            status: UserStatus.ACTIVE,
+            ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
+          },
+          select: { id: true },
+        }),
+    );
+
+    const ids = Array.from(new Set(recipients.map((entry) => entry.id)));
+    audit.success({ count: ids.length });
+    return ids;
+  } catch (error) {
+    audit.failure(error, { stage: "resolveManagerRecipientIds" });
+    throw error;
+  }
 }

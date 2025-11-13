@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { createAuditSpan } from "@/lib/logging/audit";
 
 export type SendEmailPayload = {
   to: string;
@@ -51,21 +52,34 @@ function resolveTransporter() {
 export async function sendEmail(payload: SendEmailPayload) {
   const mailer = resolveTransporter();
   const from = process.env.SMTP_FROM ?? "AcadLab <no-reply@acadlab.local>";
+  const recipientDomain = payload.to.split("@")[1] ?? "unknown";
 
-  const info = await mailer.sendMail({
-    from,
-    ...payload,
-  });
+  const audit = createAuditSpan(
+    {
+      module: "notifications-email",
+      action: "sendEmail",
+    },
+    { recipientDomain, subject: payload.subject },
+    "Sending email",
+    { importance: "low", logStart: false },
+  );
 
-  if (transportMode === "json") {
-    console.info("[mail] E-mail capturado (modo JSON)", {
-      messageId: info.messageId,
-      subject: payload.subject,
-      to: payload.to,
+  try {
+    const info = await mailer.sendMail({
+      from,
+      ...payload,
     });
-  }
 
-  return info;
+    if (transportMode === "json") {
+      audit.info({ mode: "json", messageId: info.messageId });
+    }
+
+    audit.success({ mode: transportMode ?? "unknown", messageId: info.messageId });
+    return info;
+  } catch (error) {
+    audit.failure(error, { stage: "sendMail" });
+    throw error;
+  }
 }
 
 export function isEmailDeliveryConfigured() {

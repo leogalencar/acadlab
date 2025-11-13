@@ -14,6 +14,11 @@ const credentialsSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
+type SessionUser = {
+  id?: string | null;
+  email?: string | null;
+};
+
 const isRole = (value: unknown): value is Role =>
   typeof value === "string" &&
   (Object.values(Role) as string[]).includes(value);
@@ -21,6 +26,15 @@ const isRole = (value: unknown): value is Role =>
 const isUserStatus = (value: unknown): value is UserStatus =>
   typeof value === "string" &&
   (Object.values(UserStatus) as string[]).includes(value);
+
+const extractSessionUser = (session: unknown): SessionUser | null => {
+  if (!session || typeof session !== "object" || !("user" in session)) {
+    return null;
+  }
+
+  const sessionWithUser = session as { user?: SessionUser | null };
+  return sessionWithUser.user ?? null;
+};
 
 const authLogger = logger.child({ module: "auth" });
 
@@ -276,11 +290,15 @@ export const {
     },
   },
   events: {
-    async signOut({ token, session }) {
+    async signOut(message) {
+      const token = "token" in message ? message.token : null;
+      const session = "session" in message ? message.session : null;
+      const sessionUser = extractSessionUser(session);
+
       const eventDetails = {
         event: "sign_out",
-        userId: token?.sub ?? session?.user?.id,
-        email: session?.user?.email,
+        userId: token?.sub ?? sessionUser?.id ?? undefined,
+        email: sessionUser?.email,
         role: token?.role,
         status: token?.status,
       };

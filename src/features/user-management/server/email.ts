@@ -1,4 +1,5 @@
 import { sendEmail } from "@/features/notifications/server/email";
+import { createAuditSpan } from "@/lib/logging/audit";
 
 interface SendNewUserPasswordEmailParams {
   name: string;
@@ -14,6 +15,16 @@ export async function sendNewUserPasswordEmail({
   email,
   temporaryPassword,
 }: SendNewUserPasswordEmailParams) {
+  const recipientDomain = email.split("@")[1] ?? "unknown";
+  const audit = createAuditSpan(
+    {
+      module: "user-management-email",
+      action: "sendNewUserPasswordEmail",
+    },
+    { recipientDomain },
+    "Sending new user password email",
+    { importance: "low", logStart: false },
+  );
   const loginUrl = `${BASE_URL}/login`;
   const subject = `${APP_NAME} - Sua conta foi criada`;
 
@@ -41,12 +52,18 @@ export async function sendNewUserPasswordEmail({
     </div>
   `;
 
-  await sendEmail({
-    to: email,
-    subject,
-    text,
-    html,
-  });
+  try {
+    await sendEmail({
+      to: email,
+      subject,
+      text,
+      html,
+    });
+    audit.success({ recipientDomain });
+  } catch (error) {
+    audit.failure(error, { stage: "send_email" });
+    throw error;
+  }
 }
 
 function sanitizeName(name: string) {

@@ -3,6 +3,7 @@ import { NotificationType, SoftwareRequestStatus } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import type { EntityActionType } from "@/features/notifications/types";
+import { createAuditSpan } from "@/lib/logging/audit";
 
 type PrismaClientOrTransaction = PrismaClient | Prisma.TransactionClient;
 
@@ -13,6 +14,7 @@ type BaseNotificationInput = {
   href?: string | null;
   meta?: Record<string, unknown> | null;
   client?: PrismaClientOrTransaction;
+  correlationId?: string;
 };
 
 type ReservationNotificationPayload = {
@@ -70,8 +72,23 @@ function normalizeHref(href?: string | null): string | null {
 
 async function createNotification(
   type: NotificationType,
-  { userId, title, body, href, meta, client }: BaseNotificationInput,
+  { userId, title, body, href, meta, client, correlationId }: BaseNotificationInput,
 ) {
+  const audit = createAuditSpan(
+    {
+      module: "notifications-triggers",
+      action: "createNotification",
+      correlationId,
+    },
+    {
+      type,
+      userId,
+      hasBody: Boolean(body),
+      hasHref: Boolean(href),
+    },
+    "Persisting notification",
+    { importance: "low", logStart: false, logSuccess: false },
+  );
   const payload: Record<string, unknown> = {
     title,
   };
@@ -89,18 +106,20 @@ async function createNotification(
   }
 
   try {
-    await resolveClient(client).notification.create({
-      data: {
-        userId,
-        type,
-        payload: payload as Prisma.InputJsonValue,
-      },
-    });
-  } catch (error) {
-    console.error(
-      `[@acadlab/notifications] Não foi possível registrar a notificação (${type}).`,
-      error,
+    await audit.trackPrisma(
+      { model: "notification", action: "create", targetIds: userId, meta: { type } },
+      () =>
+        resolveClient(client).notification.create({
+          data: {
+            userId,
+            type,
+            payload: payload as Prisma.InputJsonValue,
+          },
+        }),
     );
+    audit.success({ userId, type });
+  } catch (error) {
+    audit.failure(error, { type, userId });
   }
 }
 

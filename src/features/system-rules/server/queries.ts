@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { createAuditSpan } from "@/lib/logging/audit";
 import {
   DEFAULT_PERIOD_RULES_MINUTES,
   DEFAULT_SYSTEM_RULES,
@@ -53,19 +54,34 @@ export async function getSystemRules(): Promise<SerializableSystemRules> {
     DEFAULT_SYSTEM_RULES.branding,
   );
 
+  const audit = createAuditSpan(
+    { module: "system-rules", action: "getSystemRules" },
+    undefined,
+    "Loading system rules",
+    { importance: "low", logStart: false, logSuccess: false },
+  );
+
   try {
-    const records = await prisma.systemRule.findMany({
-      where: {
-        name: {
-          in: [
-            SYSTEM_RULE_NAMES.COLORS,
-            SYSTEM_RULE_NAMES.BRANDING,
-            SYSTEM_RULE_NAMES.SCHEDULE,
-            SYSTEM_RULE_NAMES.EMAIL_DOMAINS,
-          ],
-        },
+    const records = await audit.trackPrisma(
+      {
+        model: "systemRule",
+        action: "findMany",
+        meta: { names: Object.values(SYSTEM_RULE_NAMES).length },
       },
-    });
+      () =>
+        prisma.systemRule.findMany({
+          where: {
+            name: {
+              in: [
+                SYSTEM_RULE_NAMES.COLORS,
+                SYSTEM_RULE_NAMES.BRANDING,
+                SYSTEM_RULE_NAMES.SCHEDULE,
+                SYSTEM_RULE_NAMES.EMAIL_DOMAINS,
+              ],
+            },
+          },
+        }),
+    );
 
     const colorsRecord = records.find((entry) => entry.name === SYSTEM_RULE_NAMES.COLORS);
     const scheduleRecord = records.find((entry) => entry.name === SYSTEM_RULE_NAMES.SCHEDULE);
@@ -88,36 +104,47 @@ export async function getSystemRules(): Promise<SerializableSystemRules> {
       emailDomainsRecord?.updatedAt,
     );
 
-  const result = mapToSerializable(schedule, colors, emailDomains, branding);
+    const result = mapToSerializable(schedule, colors, emailDomains, branding);
 
     if (latestUpdate) {
       result.updatedAt = latestUpdate.toISOString();
     }
 
+    audit.success({ updatedAt: result.updatedAt ?? null }, "Loaded system rules");
+
     return result;
-  } catch {
-    console.warn(
-      "[system-rules] Database indisponível durante a leitura das regras. Utilizando padrões.",
-    );
+  } catch (error) {
+    audit.failure(error, { stage: "getSystemRules" });
     return fallback;
   }
 }
 
 export async function getAllowedEmailDomains(): Promise<string[]> {
+  const audit = createAuditSpan(
+    { module: "system-rules", action: "getAllowedEmailDomains" },
+    undefined,
+    "Loading allowed email domains",
+    { importance: "low", logStart: false, logSuccess: false },
+  );
+
   try {
-    const record = await prisma.systemRule.findUnique({
-      where: { name: SYSTEM_RULE_NAMES.EMAIL_DOMAINS },
-    });
+    const record = await audit.trackPrisma(
+      { model: "systemRule", action: "findUnique", targetIds: SYSTEM_RULE_NAMES.EMAIL_DOMAINS },
+      () =>
+        prisma.systemRule.findUnique({
+          where: { name: SYSTEM_RULE_NAMES.EMAIL_DOMAINS },
+        }),
+    );
 
     const parsed =
       parseEmailDomainsValue(record?.value) ??
       ({ domains: [...DEFAULT_SYSTEM_RULES.account.allowedEmailDomains] } as EmailDomainRuleValues);
 
-    return [...parsed.domains];
-  } catch {
-    console.warn(
-      "[system-rules] Database indisponível durante a leitura dos domínios permitidos. Utilizando padrões.",
-    );
+    const domains = [...parsed.domains];
+    audit.success({ count: domains.length });
+    return domains;
+  } catch (error) {
+    audit.failure(error, { stage: "getAllowedEmailDomains" });
     return [...DEFAULT_SYSTEM_RULES.account.allowedEmailDomains];
   }
 }

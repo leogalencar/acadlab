@@ -5,29 +5,41 @@ import { Role } from "@prisma/client";
 import { auth } from "@/auth";
 import { SystemRulesForm } from "@/features/system-rules/components/system-rules-form";
 import { getSystemRules } from "@/features/system-rules/server/queries";
+import { createAuditSpan } from "@/lib/logging/audit";
 
 export const metadata: Metadata = {
   title: "Regras do sistema",
 };
 
 export default async function SystemRulesPage() {
+  const audit = createAuditSpan(
+    { module: "page", action: "SystemRulesPage" },
+    undefined,
+    "Rendering /system-rules",
+    { importance: "low", logStart: false, logSuccess: false },
+  );
   const session = await auth();
 
   if (!session?.user) {
+    audit.validationFailure({ reason: "not_authenticated" });
     redirect("/login?callbackUrl=/system-rules");
   }
 
   if (session.user.role !== Role.ADMIN) {
+    audit.validationFailure({ reason: "forbidden", role: session.user.role });
     redirect("/dashboard");
   }
 
-  const rules = await getSystemRules();
-  const brandName = rules.branding.institutionName;
-  const formKey =
-    rules.updatedAt ?? `${rules.primaryColor}-${rules.secondaryColor}-${rules.accentColor}`;
+  try {
+    const rules = await getSystemRules();
+    const brandName = rules.branding.institutionName;
+    const formKey =
+      rules.updatedAt ?? `${rules.primaryColor}-${rules.secondaryColor}-${rules.accentColor}`;
 
-  return (
-    <div className="space-y-8">
+    audit.success({ brandName });
+
+    return (
+      <div className="space-y-8">
       <header className="space-y-2">
         <p className="text-sm font-medium text-primary/80">Configurações globais</p>
         <div>
@@ -38,7 +50,11 @@ export default async function SystemRulesPage() {
           <p className="text-xs text-muted-foreground">Baseado na plataforma AcadLab.</p>
         </div>
       </header>
-      <SystemRulesForm key={formKey} rules={rules} />
-    </div>
-  );
+        <SystemRulesForm key={formKey} rules={rules} />
+      </div>
+    );
+  } catch (error) {
+    audit.failure(error);
+    throw error;
+  }
 }

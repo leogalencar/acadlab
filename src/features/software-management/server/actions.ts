@@ -6,6 +6,7 @@ import { Prisma, Role } from "@prisma/client";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { createAuditSpan } from "@/lib/logging/audit";
 import { MANAGER_ROLES } from "@/features/shared/roles";
 import type { ActionState } from "@/features/shared/types";
 import { notifyEntityAction } from "@/features/notifications/server/triggers";
@@ -49,11 +50,25 @@ export async function createSoftwareAction(
 ): Promise<ActionState> {
   const session = await auth();
 
+  const audit = createAuditSpan(
+    {
+      module: "software-management",
+      action: "createSoftwareAction",
+      actorId: session?.user?.id,
+      actorRole: session?.user?.role,
+    },
+    { fieldCount: Array.from(formData.keys()).length },
+    "Received request to create software",
+    { importance: "high", persist: true },
+  );
+
   if (!session?.user) {
+    audit.validationFailure({ reason: "not_authenticated" });
     return notAuthenticated;
   }
 
   if (!canManageSoftware(session.user.role)) {
+    audit.validationFailure({ reason: "forbidden", role: session.user.role });
     return notAuthorized;
   }
 
@@ -65,28 +80,35 @@ export async function createSoftwareAction(
 
   if (!parsed.success) {
     const message = parsed.error.issues[0]?.message ?? "Não foi possível validar os dados.";
+    audit.validationFailure({ reason: "invalid_payload", issues: parsed.error.issues.length });
     return { status: "error", message };
   }
 
   try {
-    await prisma.software.create({
-      data: {
-        name: parsed.data.name.trim(),
-        version: parsed.data.version.trim(),
-        supplier: parsed.data.supplier,
-      },
-    });
+    await audit.trackPrisma(
+      { model: "software", action: "create" },
+      () =>
+        prisma.software.create({
+          data: {
+            name: parsed.data.name.trim(),
+            version: parsed.data.version.trim(),
+            supplier: parsed.data.supplier,
+          },
+        }),
+    );
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"
     ) {
+      audit.validationFailure({ reason: "duplicate_software" });
       return {
         status: "error",
         message: "Já existe um software cadastrado com este nome e versão.",
       };
     }
 
+    audit.failure(error, { stage: "createSoftware" });
     throw error;
   }
 
@@ -100,6 +122,8 @@ export async function createSoftwareAction(
 
   await revalidateSoftwareRelatedRoutes();
 
+  audit.success({ softwareName: parsed.data.name.trim(), version: parsed.data.version.trim() }, "Software criado");
+
   return { status: "success", message: "Software cadastrado com sucesso." };
 }
 
@@ -109,11 +133,25 @@ export async function updateSoftwareAction(
 ): Promise<ActionState> {
   const session = await auth();
 
+  const audit = createAuditSpan(
+    {
+      module: "software-management",
+      action: "updateSoftwareAction",
+      actorId: session?.user?.id,
+      actorRole: session?.user?.role,
+    },
+    { fieldCount: Array.from(formData.keys()).length },
+    "Received request to update software",
+    { importance: "high", persist: true },
+  );
+
   if (!session?.user) {
+    audit.validationFailure({ reason: "not_authenticated" });
     return notAuthenticated;
   }
 
   if (!canManageSoftware(session.user.role)) {
+    audit.validationFailure({ reason: "forbidden", role: session.user.role });
     return notAuthorized;
   }
 
@@ -126,27 +164,34 @@ export async function updateSoftwareAction(
 
   if (!parsed.success) {
     const message = parsed.error.issues[0]?.message ?? "Não foi possível validar os dados.";
+    audit.validationFailure({ reason: "invalid_payload", issues: parsed.error.issues.length });
     return { status: "error", message };
   }
 
   try {
-    await prisma.software.update({
-      where: { id: parsed.data.softwareId },
-      data: {
-        name: parsed.data.name.trim(),
-        version: parsed.data.version.trim(),
-        supplier: parsed.data.supplier,
-      },
-    });
+    await audit.trackPrisma(
+      { model: "software", action: "update", targetIds: parsed.data.softwareId },
+      () =>
+        prisma.software.update({
+          where: { id: parsed.data.softwareId },
+          data: {
+            name: parsed.data.name.trim(),
+            version: parsed.data.version.trim(),
+            supplier: parsed.data.supplier,
+          },
+        }),
+    );
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === "P2002") {
+        audit.validationFailure({ reason: "duplicate_software" });
         return {
           status: "error",
           message: "Já existe um software cadastrado com este nome e versão.",
         };
       }
       if (error.code === "P2025") {
+        audit.validationFailure({ reason: "software_not_found", softwareId: parsed.data.softwareId });
         return {
           status: "error",
           message: "Software não encontrado.",
@@ -154,6 +199,7 @@ export async function updateSoftwareAction(
       }
     }
 
+    audit.failure(error, { stage: "updateSoftware" });
     throw error;
   }
 
@@ -167,6 +213,8 @@ export async function updateSoftwareAction(
 
   await revalidateSoftwareRelatedRoutes();
 
+  audit.success({ softwareId: parsed.data.softwareId }, "Software atualizado");
+
   return { status: "success", message: "Software atualizado com sucesso." };
 }
 
@@ -175,11 +223,25 @@ export async function deleteSoftwareAction(
 ): Promise<ActionState> {
   const session = await auth();
 
+  const audit = createAuditSpan(
+    {
+      module: "software-management",
+      action: "deleteSoftwareAction",
+      actorId: session?.user?.id,
+      actorRole: session?.user?.role,
+    },
+    { fieldCount: Array.from(formData.keys()).length },
+    "Received request to delete software",
+    { importance: "high", persist: true },
+  );
+
   if (!session?.user) {
+    audit.validationFailure({ reason: "not_authenticated" });
     return notAuthenticated;
   }
 
   if (!canManageSoftware(session.user.role)) {
+    audit.validationFailure({ reason: "forbidden", role: session.user.role });
     return notAuthorized;
   }
 
@@ -189,23 +251,33 @@ export async function deleteSoftwareAction(
 
   if (!parsed.success) {
     const message = parsed.error.issues[0]?.message ?? "Não foi possível validar os dados.";
+    audit.validationFailure({ reason: "invalid_payload", issues: parsed.error.issues.length });
     return { status: "error", message };
   }
 
-  const software = await prisma.software.findUnique({
-    where: { id: parsed.data.softwareId },
-    select: { name: true, version: true },
-  });
+  const software = await audit.trackPrisma(
+    { model: "software", action: "findUnique", targetIds: parsed.data.softwareId },
+    () =>
+      prisma.software.findUnique({
+        where: { id: parsed.data.softwareId },
+        select: { name: true, version: true },
+      }),
+  );
 
   if (!software) {
+    audit.validationFailure({ reason: "software_not_found", softwareId: parsed.data.softwareId });
     return { status: "error", message: "Software não encontrado." };
   }
 
   try {
-    await prisma.software.delete({ where: { id: parsed.data.softwareId } });
+    await audit.trackPrisma(
+      { model: "software", action: "delete", targetIds: parsed.data.softwareId },
+      () => prisma.software.delete({ where: { id: parsed.data.softwareId } }),
+    );
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === "P2025") {
+        audit.validationFailure({ reason: "software_not_found", softwareId: parsed.data.softwareId });
         return {
           status: "error",
           message: "Software não encontrado.",
@@ -213,6 +285,7 @@ export async function deleteSoftwareAction(
       }
     }
 
+    audit.failure(error, { stage: "deleteSoftware" });
     throw error;
   }
 
@@ -229,6 +302,8 @@ export async function deleteSoftwareAction(
   });
 
   await revalidateSoftwareRelatedRoutes();
+
+  audit.success({ softwareId: parsed.data.softwareId }, "Software removido");
 
   return { status: "success", message: "Software removido com sucesso." };
 }

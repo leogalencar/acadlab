@@ -229,3 +229,14 @@ model VerificationToken {
 
   @@unique([identifier, token])
 }
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  level     String
+  module    String
+  action    String
+  actorId   String?
+  message   String
+  metadata  Json?
+  createdAt DateTime @default(now())
+}
