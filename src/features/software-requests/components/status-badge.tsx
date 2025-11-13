@@ -10,6 +10,8 @@ const STATUS_STYLES: Record<SoftwareRequestStatus, string> = {
     "border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-200",
   [SoftwareRequestStatus.REJECTED]:
     "border-destructive/40 bg-destructive/15 text-destructive",
+  [SoftwareRequestStatus.CANCELLED]:
+    "border-muted-foreground/40 bg-muted/40 text-muted-foreground",
 };
 
 interface SoftwareRequestStatusBadgeProps {

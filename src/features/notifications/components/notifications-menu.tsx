@@ -42,7 +42,7 @@ interface NotificationsMenuProps {
   initialUnreadCount: number;
 }
 
-const POLLING_INTERVAL_MS = 20_000;
+const POLLING_INTERVAL_MS = 10_000;
 
 export function NotificationsMenu({ initialNotifications, initialUnreadCount }: NotificationsMenuProps) {
   const [open, setOpen] = useState(false);
@@ -100,6 +100,13 @@ export function NotificationsMenu({ initialNotifications, initialUnreadCount }: 
   );
 
   useEffect(() => {
+    applyOverview({
+      notifications: initialNotifications,
+      unreadCount: initialUnreadCount,
+    });
+  }, [initialNotifications, initialUnreadCount, applyOverview]);
+
+  useEffect(() => {
     if (!activeNotificationId) {
       return;
     }
@@ -117,6 +124,25 @@ export function NotificationsMenu({ initialNotifications, initialUnreadCount }: 
 
     fetchOverview({ showErrorToast: true });
   }, [open, fetchOverview]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        return;
+      }
+
+      void fetchOverview();
+    };
+
+    handleVisibilityChange();
+    window.addEventListener("focus", handleVisibilityChange);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", handleVisibilityChange);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [fetchOverview]);
 
   useEffect(() => {
     const listener = (event: MouseEvent) => {
@@ -253,7 +279,7 @@ export function NotificationsMenu({ initialNotifications, initialUnreadCount }: 
   const pendingId = pendingNotification?.id ?? null;
 
   return (
-    <div className="relative" ref={containerRef}>
+    <div className="relative z-[200]" ref={containerRef}>
       <Button
         type="button"
         variant="ghost"
@@ -273,7 +299,7 @@ export function NotificationsMenu({ initialNotifications, initialUnreadCount }: 
       </Button>
 
       {open ? (
-        <div className="absolute right-0 top-full z-[60] mt-2 w-80 overflow-hidden rounded-lg border border-border/60 bg-background/95 shadow-xl backdrop-blur">
+        <div className="absolute right-0 top-full z-[300] mt-2 w-80 overflow-hidden rounded-lg border border-border/60 bg-background/95 shadow-xl backdrop-blur">
           <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
             <p className="text-sm font-semibold text-foreground">Notificações</p>
             <div className="flex items-center gap-1">

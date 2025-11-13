@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { idleActionState } from "@/features/shared/types";
 import {
   DatePickerCalendar,
@@ -74,6 +75,8 @@ export function SchedulingBoard({
       },
     },
   );
+  const [reservationPurpose, setReservationPurpose] = useState<"standard" | "maintenance">("standard");
+  const [maintenanceNotes, setMaintenanceNotes] = useState("");
   const formRef = useRef<HTMLFormElement | null>(null);
   const selectedLaboratoryId = laboratory.id;
   const selectedLaboratoryName = laboratory.name;
@@ -106,6 +109,12 @@ export function SchedulingBoard({
     [slotMetadata],
   );
 
+  const canScheduleRecurrence = actorRole === Role.ADMIN || actorRole === Role.TECHNICIAN;
+  const canManageClassPeriod = actorRole === Role.ADMIN || actorRole === Role.TECHNICIAN;
+  const canScheduleMaintenance = actorRole === Role.ADMIN || actorRole === Role.TECHNICIAN;
+  const isMaintenanceIntent = reservationPurpose === "maintenance";
+  const hasTeacherOptions = teacherOptions.length > 0;
+
   useEffect(() => {
     setSelectedSlots((current) => {
       const filtered = new Set([...current].filter((slotId) => allSlotIds.has(slotId)));
@@ -117,12 +126,21 @@ export function SchedulingBoard({
     if (formState.status === "success") {
       setSelectedSlots(new Set());
       setIsConfirmDialogOpen(false);
+      setReservationPurpose("standard");
+      setMaintenanceNotes("");
     }
   }, [formState.status]);
 
   useEffect(() => {
     setSelectedSlots(new Set());
   }, [selectedLaboratoryId, selectedDate]);
+
+  useEffect(() => {
+    if (!canScheduleMaintenance && reservationPurpose === "maintenance") {
+      setReservationPurpose("standard");
+      setMaintenanceNotes("");
+    }
+  }, [canScheduleMaintenance, reservationPurpose]);
 
   const selectedSlotIds = useMemo(() => {
     const ids = Array.from(selectedSlots).filter((slotId) => allSlotIds.has(slotId));
@@ -193,9 +211,6 @@ export function SchedulingBoard({
     });
   }, [selectedDate, timeZone]);
 
-  const canScheduleRecurrence = actorRole === Role.ADMIN || actorRole === Role.TECHNICIAN;
-  const canManageClassPeriod = actorRole === Role.ADMIN || actorRole === Role.TECHNICIAN;
-  const hasTeacherOptions = teacherOptions.length > 0;
   const handleClassPeriodSuccess = useCallback(() => {
     setSelectedSlots(new Set());
   }, []);
@@ -393,6 +408,66 @@ export function SchedulingBoard({
                 {selectedSlotIds.map((slotId) => (
                   <input key={slotId} type="hidden" name="slotIds" value={slotId} />
                 ))}
+
+                {canScheduleMaintenance ? (
+                  <div className="space-y-3 rounded-lg border border-border/60 bg-muted/30 p-3">
+                    <p className="text-sm font-medium text-foreground">Finalidade da reserva</p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <label className="flex cursor-pointer items-start gap-3 rounded-md border border-border/60 bg-background px-3 py-2 text-sm shadow-sm">
+                        <input
+                          type="radio"
+                          name="purpose"
+                          value="standard"
+                          checked={!isMaintenanceIntent}
+                          onChange={() => setReservationPurpose("standard")}
+                          className="mt-1"
+                        />
+                        <div>
+                          <p className="font-medium text-foreground">Uso regular</p>
+                          <p className="text-xs text-muted-foreground">Reserva para aulas, estudos ou eventos.</p>
+                        </div>
+                      </label>
+                      <label className="flex cursor-pointer items-start gap-3 rounded-md border border-border/60 bg-background px-3 py-2 text-sm shadow-sm">
+                        <input
+                          type="radio"
+                          name="purpose"
+                          value="maintenance"
+                          checked={isMaintenanceIntent}
+                          onChange={() => setReservationPurpose("maintenance")}
+                          className="mt-1"
+                        />
+                        <div>
+                          <p className="font-medium text-foreground">Manutenção programada</p>
+                          <p className="text-xs text-muted-foreground">
+                            Bloqueia o laboratório para limpeza, reparos ou atualizações.
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+                    {isMaintenanceIntent ? (
+                      <div className="grid gap-2">
+                        <Label htmlFor="maintenanceNotes" className="text-sm font-medium text-foreground">
+                          Descrição da manutenção
+                        </Label>
+                        <textarea
+                          id="maintenanceNotes"
+                          name="maintenanceNotes"
+                          rows={3}
+                          maxLength={200}
+                          value={maintenanceNotes}
+                          onChange={(event) => setMaintenanceNotes(event.target.value)}
+                          className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                          placeholder="Ex.: Revisão elétrica, atualização de softwares ou limpeza profunda."
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Informe o motivo para que outros usuários saibam por que o laboratório está indisponível.
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <input type="hidden" name="purpose" value="standard" />
+                )}
 
                 {canScheduleRecurrence ? (
                   <div className="space-y-2">

@@ -50,6 +50,15 @@ const createReservationSchema = z.object({
 
       return Math.min(parsed, MAX_OCCURRENCES);
     }),
+  purpose: z
+    .enum(["standard", "maintenance"])
+    .default("standard"),
+  maintenanceNotes: z
+    .string()
+    .trim()
+    .max(200, "A descrição da manutenção deve ter no máximo 200 caracteres.")
+    .optional()
+    .transform((value) => (value && value.length > 0 ? value : undefined)),
 });
 
 const cancelReservationSchema = z.object({
@@ -146,6 +155,10 @@ async function getSubjectColumnSupport(): Promise<SubjectColumnSupport> {
   }
 }
 
+function getString(value: FormDataEntryValue | null): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
 export async function createReservationAction(
   _prev: ActionState,
   formData: FormData,
@@ -167,7 +180,9 @@ export async function createReservationAction(
     laboratoryId: formData.get("laboratoryId"),
     date: formData.get("date"),
     slotIds: rawSlotIds,
-    occurrences: formData.get("occurrences"),
+    occurrences: getString(formData.get("occurrences")),
+    purpose: getString(formData.get("purpose")),
+    maintenanceNotes: getString(formData.get("maintenanceNotes")),
   });
 
   if (!parsed.success) {
@@ -181,6 +196,23 @@ export async function createReservationAction(
   if (occurrences > 1 && session.user.role === Role.PROFESSOR) {
     occurrences = 1;
   }
+
+  const canScheduleMaintenance = session.user.role === Role.ADMIN || session.user.role === Role.TECHNICIAN;
+  const wantsMaintenance = parsed.data.purpose === "maintenance";
+
+  if (wantsMaintenance && !canScheduleMaintenance) {
+    return {
+      status: "error",
+      message: "Somente técnicos e administradores podem reservar laboratórios para manutenção.",
+    };
+  }
+
+  const isMaintenance = wantsMaintenance && canScheduleMaintenance;
+  const maintenanceSubject = isMaintenance
+    ? parsed.data.maintenanceNotes
+      ? `Manutenção • ${parsed.data.maintenanceNotes}`
+      : "Manutenção programada"
+    : undefined;
 
   const laboratory = await prisma.laboratory.findUnique({
     where: { id: laboratoryId },
@@ -325,6 +357,7 @@ export async function createReservationAction(
 
   const reservationStart = new Date(firstSlot.startTime);
   const reservationEnd = new Date(lastSlot.endTime);
+  const subjectColumnSupport = await getSubjectColumnSupport();
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -345,6 +378,7 @@ export async function createReservationAction(
             endDate: new Date(
               reservationEnd.getTime() + (occurrences - 1) * 7 * 24 * 60 * 60_000,
             ),
+            ...(subjectColumnSupport.recurrence && maintenanceSubject ? { subject: maintenanceSubject } : {}),
           },
           select: { id: true },
         });
@@ -404,6 +438,7 @@ export async function createReservationAction(
             endTime: occurrenceEnd,
             status: ReservationStatus.CONFIRMED,
             recurrenceId: recurrenceId ?? undefined,
+            ...(subjectColumnSupport.reservation && maintenanceSubject ? { subject: maintenanceSubject } : {}),
           },
         });
       }

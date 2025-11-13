@@ -254,6 +254,7 @@ function buildStatusCounts(
     [SoftwareRequestStatus.PENDING]: groups.find((group) => group.status === SoftwareRequestStatus.PENDING)?._count ?? 0,
     [SoftwareRequestStatus.APPROVED]: groups.find((group) => group.status === SoftwareRequestStatus.APPROVED)?._count ?? 0,
     [SoftwareRequestStatus.REJECTED]: groups.find((group) => group.status === SoftwareRequestStatus.REJECTED)?._count ?? 0,
+    [SoftwareRequestStatus.CANCELLED]: groups.find((group) => group.status === SoftwareRequestStatus.CANCELLED)?._count ?? 0,
   };
 }
 
@@ -323,7 +324,8 @@ function safeParseStatus(value?: string | null): SoftwareRequestStatus | undefin
   if (
     value === SoftwareRequestStatus.PENDING ||
     value === SoftwareRequestStatus.APPROVED ||
-    value === SoftwareRequestStatus.REJECTED
+    value === SoftwareRequestStatus.REJECTED ||
+    value === SoftwareRequestStatus.CANCELLED
   ) {
     return value;
   }

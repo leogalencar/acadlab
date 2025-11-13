@@ -188,6 +188,7 @@ export async function notifySoftwareRequestStatusChange({
     PENDING: "pendente",
     APPROVED: "aprovado",
     REJECTED: "rejeitado",
+    CANCELLED: "cancelado",
   };
 
   const formattedStatus = statusLabels[status];
@@ -304,5 +305,96 @@ export async function notifyEntityAction({
       action: type,
     },
     client,
+  });
+}
+
+type SoftwareRequestManagerNotificationBase = {
+  recipientIds: string[];
+  softwareName: string;
+  softwareVersion?: string | null;
+  laboratoryName: string;
+  requesterName?: string | null;
+};
+
+function formatSoftwareRequestLabel(name: string, version?: string | null): string {
+  if (version && version.trim().length > 0) {
+    return `${name} • ${version}`;
+  }
+  return name;
+}
+
+async function notifySoftwareRequestManagers({
+  recipientIds,
+  title,
+  body,
+  meta,
+}: {
+  recipientIds: string[];
+  title: string;
+  body: string;
+  meta: Record<string, unknown>;
+}) {
+  if (recipientIds.length === 0) {
+    return;
+  }
+
+  await Promise.all(
+    recipientIds.map((recipientId) =>
+      createNotification(NotificationType.SOFTWARE_REQUEST_UPDATED, {
+        userId: recipientId,
+        title,
+        body,
+        href: "/software-requests",
+        meta,
+      }),
+    ),
+  );
+}
+
+export async function notifySoftwareRequestCreatedForManagers({
+  recipientIds,
+  softwareName,
+  softwareVersion,
+  laboratoryName,
+  requesterName,
+}: SoftwareRequestManagerNotificationBase) {
+  const label = formatSoftwareRequestLabel(softwareName, softwareVersion);
+  const requesterLabel = requesterName ?? "Um docente";
+
+  await notifySoftwareRequestManagers({
+    recipientIds,
+    title: "Nova solicitação de software",
+    body: `${requesterLabel} solicitou ${label} para o laboratório ${laboratoryName}.`,
+    meta: {
+      softwareName,
+      softwareVersion: softwareVersion ?? null,
+      laboratoryName,
+      requesterName: requesterName ?? null,
+      event: "created",
+    },
+  });
+}
+
+export async function notifySoftwareRequestCancelledForManagers({
+  recipientIds,
+  softwareName,
+  softwareVersion,
+  laboratoryName,
+  requesterName,
+}: SoftwareRequestManagerNotificationBase) {
+  const label = formatSoftwareRequestLabel(softwareName, softwareVersion);
+  const requesterLabel = requesterName ?? "O solicitante";
+
+  await notifySoftwareRequestManagers({
+    recipientIds,
+    title: "Solicitação cancelada",
+    body: `${requesterLabel} cancelou o pedido ${label} do laboratório ${laboratoryName}.`,
+    meta: {
+      softwareName,
+      softwareVersion: softwareVersion ?? null,
+      laboratoryName,
+      requesterName: requesterName ?? null,
+      event: "cancelled",
+    },
   });
 }

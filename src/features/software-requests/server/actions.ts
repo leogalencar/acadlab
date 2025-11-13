@@ -2,15 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { SoftwareRequestStatus } from "@prisma/client";
+import { SoftwareRequestStatus, UserStatus } from "@prisma/client";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { canManageSoftwareRequests } from "@/features/software-requests/types";
+import { MANAGER_ROLES } from "@/features/shared/roles";
 import type { ActionState } from "@/features/shared/types";
 import {
   notifyEntityAction,
   notifySoftwareRequestStatusChange,
+  notifySoftwareRequestCreatedForManagers,
+  notifySoftwareRequestCancelledForManagers,
 } from "@/features/notifications/server/triggers";
 
 const notAuthenticated: ActionState = {
@@ -53,6 +56,16 @@ const updateStatusSchema = z.object({
     .transform((value) => (value && value.length > 0 ? value : undefined)),
 });
 
+const cancelRequestSchema = z.object({
+  requestId: z.string().min(1, "Solicitação inválida."),
+  reason: z
+    .string()
+    .trim()
+    .max(400, "O motivo deve ter no máximo 400 caracteres.")
+    .optional()
+    .transform((value) => (value && value.length > 0 ? value : undefined)),
+});
+
 export async function createSoftwareRequestAction(
   _prev: ActionState,
   formData: FormData,
@@ -77,12 +90,16 @@ export async function createSoftwareRequestAction(
 
   const laboratory = await prisma.laboratory.findUnique({
     where: { id: parsed.data.laboratoryId },
-    select: { id: true },
+    select: { id: true, name: true },
   });
 
   if (!laboratory) {
     return { status: "error", message: "Laboratório não encontrado." };
   }
+
+  const softwareLabel = parsed.data.softwareVersion
+    ? `${parsed.data.softwareName} • ${parsed.data.softwareVersion}`
+    : parsed.data.softwareName;
 
   await prisma.softwareRequest.create({
     data: {
@@ -97,10 +114,22 @@ export async function createSoftwareRequestAction(
   await notifyEntityAction({
     userId: session.user.id,
     entity: "Solicitação de software",
-    entityName: `${parsed.data.softwareName} • ${parsed.data.softwareVersion}`,
+    entityName: softwareLabel,
     href: "/software-requests",
     type: "create",
   });
+
+  const recipientIds = await resolveManagerRecipientIds(session.user.id);
+
+  if (recipientIds.length > 0) {
+    await notifySoftwareRequestCreatedForManagers({
+      recipientIds,
+      softwareName: parsed.data.softwareName,
+      softwareVersion: parsed.data.softwareVersion,
+      laboratoryName: laboratory.name,
+      requesterName: session.user.name ?? null,
+    });
+  }
 
   await revalidateSoftwareRequestRoutes();
 
@@ -130,6 +159,13 @@ export async function updateSoftwareRequestStatusAction(
   if (!parsed.success) {
     const message = parsed.error.issues[0]?.message ?? "Não foi possível validar os dados informados.";
     return { status: "error", message };
+  }
+
+  if (parsed.data.status === SoftwareRequestStatus.CANCELLED) {
+    return {
+      status: "error",
+      message: "Use o cancelamento disponível para o solicitante.",
+    };
   }
 
   const existing = await prisma.softwareRequest.findUnique({
@@ -188,7 +224,109 @@ export async function updateSoftwareRequestStatusAction(
   return { status: "success", message: "Status da solicitação atualizado." };
 }
 
+export async function cancelSoftwareRequestAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await auth();
+
+  if (!session?.user) {
+    return notAuthenticated;
+  }
+
+  const parsed = cancelRequestSchema.safeParse({
+    requestId: formData.get("requestId"),
+    reason: formData.get("reason"),
+  });
+
+  if (!parsed.success) {
+    const message = parsed.error.issues[0]?.message ?? "Não foi possível validar a solicitação.";
+    return { status: "error", message };
+  }
+
+  const existing = await prisma.softwareRequest.findUnique({
+    where: { id: parsed.data.requestId },
+    select: {
+      id: true,
+      requesterId: true,
+      status: true,
+      softwareName: true,
+      softwareVersion: true,
+      laboratory: { select: { name: true } },
+    },
+  });
+
+  if (!existing) {
+    return { status: "error", message: "Solicitação não encontrada." };
+  }
+
+  if (existing.requesterId !== session.user.id) {
+    return {
+      status: "error",
+      message: "Você só pode cancelar solicitações registradas por você.",
+    };
+  }
+
+  if (existing.status !== SoftwareRequestStatus.PENDING) {
+    return {
+      status: "error",
+      message: "Somente solicitações pendentes podem ser canceladas.",
+    };
+  }
+
+  await prisma.softwareRequest.update({
+    where: { id: existing.id },
+    data: {
+      status: SoftwareRequestStatus.CANCELLED,
+      responseNotes: parsed.data.reason ?? null,
+      reviewerId: null,
+      reviewedAt: new Date(),
+    },
+  });
+
+  const softwareLabel = existing.softwareVersion
+    ? `${existing.softwareName} • ${existing.softwareVersion}`
+    : existing.softwareName;
+
+  await notifyEntityAction({
+    userId: session.user.id,
+    entity: "Solicitações de software",
+    entityName: softwareLabel,
+    href: "/software-requests",
+    type: "delete",
+  });
+
+  const recipientIds = await resolveManagerRecipientIds(session.user.id);
+
+  if (recipientIds.length > 0) {
+    await notifySoftwareRequestCancelledForManagers({
+      recipientIds,
+      softwareName: existing.softwareName,
+      softwareVersion: existing.softwareVersion,
+      laboratoryName: existing.laboratory.name,
+      requesterName: session.user.name ?? null,
+    });
+  }
+
+  await revalidateSoftwareRequestRoutes();
+
+  return { status: "success", message: "Solicitação cancelada com sucesso." };
+}
+
 async function revalidateSoftwareRequestRoutes() {
   revalidatePath("/software-requests");
   revalidatePath("/dashboard");
+}
+
+async function resolveManagerRecipientIds(excludeUserId?: string): Promise<string[]> {
+  const recipients = await prisma.user.findMany({
+    where: {
+      role: { in: MANAGER_ROLES },
+      status: UserStatus.ACTIVE,
+      ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
+    },
+    select: { id: true },
+  });
+
+  return Array.from(new Set(recipients.map((entry) => entry.id)));
 }
