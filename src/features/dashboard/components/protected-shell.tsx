@@ -130,7 +130,7 @@ export function ProtectedShell({
         </footer>
       </aside>
       <div className="flex flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-4 backdrop-blur md:px-8">
+        <header className="flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-4 backdrop-blur md:px-8 z-50">
           <Breadcrumbs pathname={pathname} />
           <div className="flex items-center gap-3">
             <NotificationsMenu
