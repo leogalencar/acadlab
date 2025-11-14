@@ -14,6 +14,7 @@ import { extractEmailDomain } from "@/features/system-rules/utils";
 import { MANAGER_ROLES } from "@/features/shared/roles";
 import { sendNewUserPasswordEmail } from "@/features/user-management/server/email";
 import { notifyEntityAction } from "@/features/notifications/server/triggers";
+import { createAuditSpan } from "@/lib/logging/audit";
 
 export type UserManagementActionState = {
   status: "idle" | "success" | "error";
@@ -60,12 +61,26 @@ export async function createUserAction(
 ): Promise<UserManagementActionState> {
   const session = await auth();
 
+  const audit = createAuditSpan(
+    {
+      module: "user-management",
+      action: "createUserAction",
+      actorId: session?.user?.id,
+      actorRole: session?.user?.role,
+    },
+    { fieldCount: Array.from(formData.keys()).length },
+    "Received request to create user",
+    { importance: "high", persist: true },
+  );
+
   if (!session?.user) {
+    audit.validationFailure({ reason: "not_authenticated" });
     return { status: "error", message: "Você precisa estar autenticado." };
   }
 
   const actorRole = session.user.role;
   if (!canManageUsers(actorRole)) {
+    audit.validationFailure({ reason: "forbidden", role: actorRole });
     return {
       status: "error",
       message: "Você não possui permissão para cadastrar usuários.",
@@ -80,10 +95,12 @@ export async function createUserAction(
 
   if (!parsed.success) {
     const message = parsed.error.issues[0]?.message ?? "Não foi possível validar os dados.";
+    audit.validationFailure({ reason: "invalid_payload", issues: parsed.error.issues.length });
     return { status: "error", message };
   }
 
   if (!canManageRole(actorRole, parsed.data.role)) {
+    audit.validationFailure({ reason: "forbidden_role", targetRole: parsed.data.role });
     return {
       status: "error",
       message: "Você não possui permissão para cadastrar usuários com este perfil de acesso.",
@@ -94,6 +111,7 @@ export async function createUserAction(
   const emailDomain = extractEmailDomain(parsed.data.email);
 
   if (!emailDomain || !allowedDomains.includes(emailDomain)) {
+    audit.validationFailure({ reason: "disallowed_domain", domain: emailDomain });
     return {
       status: "error",
       message: buildDisallowedDomainMessage(allowedDomains),
@@ -108,16 +126,20 @@ export async function createUserAction(
   let createdUserId: string | null = null;
 
   try {
-    const createdUser = await prisma.user.create({
-      data: {
-        name: sanitizedName,
-        email: sanitizedEmail,
-        role: parsed.data.role,
-        status: UserStatus.ACTIVE,
-        passwordHash,
-      },
-      select: { id: true },
-    });
+    const createdUser = await audit.trackPrisma(
+      { model: "user", action: "create" },
+      () =>
+        prisma.user.create({
+          data: {
+            name: sanitizedName,
+            email: sanitizedEmail,
+            role: parsed.data.role,
+            status: UserStatus.ACTIVE,
+            passwordHash,
+          },
+          select: { id: true },
+        }),
+    );
 
     createdUserId = createdUser.id;
   } catch (error) {
@@ -125,12 +147,14 @@ export async function createUserAction(
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"
     ) {
+      audit.validationFailure({ reason: "duplicate_email" });
       return {
         status: "error",
         message: "Já existe um usuário cadastrado com este e-mail.",
       };
     }
 
+    audit.failure(error, { stage: "create_user" });
     throw error;
   }
 
@@ -141,16 +165,16 @@ export async function createUserAction(
       temporaryPassword,
     });
   } catch (error) {
-    console.error("[user-management] Falha ao enviar senha provisória por e-mail.", error);
+    audit.failure(error, { stage: "send_temporary_password" });
 
     if (createdUserId) {
-      await prisma.user
-        .delete({ where: { id: createdUserId } })
+      await audit
+        .trackPrisma(
+          { model: "user", action: "delete", targetIds: createdUserId },
+          () => prisma.user.delete({ where: { id: createdUserId } }),
+        )
         .catch((deleteError) => {
-          console.error(
-            "[user-management] Falha ao remover usuário após erro no envio de e-mail.",
-            deleteError,
-          );
+          audit.failure(deleteError, { stage: "rollback_user_creation" });
         });
     }
 
@@ -172,6 +196,8 @@ export async function createUserAction(
   revalidatePath("/users");
   revalidatePath("/dashboard");
 
+  audit.success({ userId: createdUserId, role: parsed.data.role }, "Usuário criado");
+
   return {
     status: "success",
     message: "Usuário cadastrado com sucesso. Enviamos a senha provisória por e-mail.",
@@ -184,12 +210,26 @@ export async function updateUserAction(
 ): Promise<UserManagementActionState> {
   const session = await auth();
 
+  const audit = createAuditSpan(
+    {
+      module: "user-management",
+      action: "updateUserAction",
+      actorId: session?.user?.id,
+      actorRole: session?.user?.role,
+    },
+    { fieldCount: Array.from(formData.keys()).length },
+    "Received request to update user",
+    { importance: "high", persist: true },
+  );
+
   if (!session?.user) {
+    audit.validationFailure({ reason: "not_authenticated" });
     return { status: "error", message: "Você precisa estar autenticado." };
   }
 
   const actorRole = session.user.role;
   if (!canManageUsers(actorRole)) {
+    audit.validationFailure({ reason: "forbidden", role: actorRole });
     return {
       status: "error",
       message: "Você não possui permissão para editar usuários.",
@@ -206,19 +246,26 @@ export async function updateUserAction(
 
   if (!parsed.success) {
     const message = parsed.error.issues[0]?.message ?? "Não foi possível validar os dados.";
+    audit.validationFailure({ reason: "invalid_payload", issues: parsed.error.issues.length });
     return { status: "error", message };
   }
 
-  const targetUser = await prisma.user.findUnique({
-    where: { id: parsed.data.userId },
-    select: { id: true, role: true },
-  });
+  const targetUser = await audit.trackPrisma(
+    { model: "user", action: "findUnique", targetIds: parsed.data.userId },
+    () =>
+      prisma.user.findUnique({
+        where: { id: parsed.data.userId },
+        select: { id: true, role: true },
+      }),
+  );
 
   if (!targetUser) {
+    audit.validationFailure({ reason: "user_not_found", userId: parsed.data.userId });
     return { status: "error", message: "Usuário não encontrado." };
   }
 
   if (targetUser.id === session.user.id) {
+    audit.validationFailure({ reason: "self_edit_forbidden" });
     return {
       status: "error",
       message: "Você não pode editar os seus próprios dados por este módulo.",
@@ -226,6 +273,7 @@ export async function updateUserAction(
   }
 
   if (!canManageRole(actorRole, targetUser.role)) {
+    audit.validationFailure({ reason: "forbidden_target_role", targetRole: targetUser.role });
     return {
       status: "error",
       message: "Você não possui permissão para editar este usuário.",
@@ -233,6 +281,7 @@ export async function updateUserAction(
   }
 
   if (!canManageRole(actorRole, parsed.data.role)) {
+    audit.validationFailure({ reason: "forbidden_assign_role", targetRole: parsed.data.role });
     return {
       status: "error",
       message: "Você não possui permissão para atribuir este perfil de acesso.",
@@ -243,6 +292,7 @@ export async function updateUserAction(
   const emailDomain = extractEmailDomain(parsed.data.email);
 
   if (!emailDomain || !allowedDomains.includes(emailDomain)) {
+    audit.validationFailure({ reason: "disallowed_domain", domain: emailDomain });
     return {
       status: "error",
       message: buildDisallowedDomainMessage(allowedDomains),
@@ -260,21 +310,27 @@ export async function updateUserAction(
   };
 
   try {
-    await prisma.user.update({
-      where: { id: parsed.data.userId },
-      data: updateData,
-    });
+    await audit.trackPrisma(
+      { model: "user", action: "update", targetIds: parsed.data.userId },
+      () =>
+        prisma.user.update({
+          where: { id: parsed.data.userId },
+          data: updateData,
+        }),
+    );
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"
     ) {
+      audit.validationFailure({ reason: "duplicate_email" });
       return {
         status: "error",
         message: "Já existe um usuário cadastrado com este e-mail.",
       };
     }
 
+    audit.failure(error, { stage: "update_user" });
     throw error;
   }
 
@@ -289,18 +345,34 @@ export async function updateUserAction(
   revalidatePath("/users");
   revalidatePath("/dashboard");
 
+  audit.success({ userId: parsed.data.userId, newRole: parsed.data.role, status: parsed.data.status }, "Usuário atualizado");
+
   return { status: "success", message: "Usuário atualizado com sucesso." };
 }
 
 export async function deleteUserAction(formData: FormData): Promise<UserManagementActionState> {
   const session = await auth();
 
+  const audit = createAuditSpan(
+    {
+      module: "user-management",
+      action: "deleteUserAction",
+      actorId: session?.user?.id,
+      actorRole: session?.user?.role,
+    },
+    { fieldCount: Array.from(formData.keys()).length },
+    "Received request to delete user",
+    { importance: "high", persist: true },
+  );
+
   if (!session?.user) {
+    audit.validationFailure({ reason: "not_authenticated" });
     return { status: "error", message: "Você precisa estar autenticado." };
   }
 
   const actorRole = session.user.role;
   if (!canManageUsers(actorRole)) {
+    audit.validationFailure({ reason: "forbidden", role: actorRole });
     return {
       status: "error",
       message: "Você não possui permissão para remover usuários.",
@@ -313,26 +385,34 @@ export async function deleteUserAction(formData: FormData): Promise<UserManageme
 
   if (!parsed.success) {
     const message = parsed.error.issues[0]?.message ?? "Não foi possível validar os dados.";
+    audit.validationFailure({ reason: "invalid_payload", issues: parsed.error.issues.length });
     return { status: "error", message };
   }
 
   if (parsed.data.userId === session.user.id) {
+    audit.validationFailure({ reason: "self_delete_forbidden" });
     return {
       status: "error",
       message: "Você não pode remover o seu próprio usuário.",
     };
   }
 
-  const targetUser = await prisma.user.findUnique({
-    where: { id: parsed.data.userId },
-    select: { role: true, name: true },
-  });
+  const targetUser = await audit.trackPrisma(
+    { model: "user", action: "findUnique", targetIds: parsed.data.userId },
+    () =>
+      prisma.user.findUnique({
+        where: { id: parsed.data.userId },
+        select: { role: true, name: true },
+      }),
+  );
 
   if (!targetUser) {
+    audit.validationFailure({ reason: "user_not_found", userId: parsed.data.userId });
     return { status: "error", message: "Usuário não encontrado." };
   }
 
   if (!canManageRole(actorRole, targetUser.role)) {
+    audit.validationFailure({ reason: "forbidden_target_role", targetRole: targetUser.role });
     return {
       status: "error",
       message: "Você não possui permissão para remover este usuário.",
@@ -340,20 +420,26 @@ export async function deleteUserAction(formData: FormData): Promise<UserManageme
   }
 
   try {
-    await prisma.user.delete({
-      where: { id: parsed.data.userId },
-    });
+    await audit.trackPrisma(
+      { model: "user", action: "delete", targetIds: parsed.data.userId },
+      () =>
+        prisma.user.delete({
+          where: { id: parsed.data.userId },
+        }),
+    );
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2025"
     ) {
+      audit.validationFailure({ reason: "user_not_found", userId: parsed.data.userId });
       return {
         status: "error",
         message: "Usuário não encontrado.",
       };
     }
 
+    audit.failure(error, { stage: "delete_user" });
     throw error;
   }
 
@@ -367,6 +453,8 @@ export async function deleteUserAction(formData: FormData): Promise<UserManageme
 
   revalidatePath("/users");
   revalidatePath("/dashboard");
+
+  audit.success({ userId: parsed.data.userId }, "Usuário removido");
 
   return { status: "success", message: "Usuário removido com sucesso." };
 }

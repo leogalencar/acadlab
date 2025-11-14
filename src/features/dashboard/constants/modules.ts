@@ -1,5 +1,15 @@
 import type { LucideIcon } from "lucide-react";
-import { ClipboardList, HardHat, LayoutDashboard, LifeBuoy, Settings, SlidersHorizontal, Users } from "lucide-react";
+import {
+  ActivitySquare,
+  ClipboardList,
+  HardHat,
+  LayoutDashboard,
+  LifeBuoy,
+  Settings,
+  ShieldAlert,
+  SlidersHorizontal,
+  Users,
+} from "lucide-react";
 import { Role } from "@prisma/client";
 
 export interface DashboardModule {
@@ -75,6 +85,26 @@ const MODULE_SYSTEM_RULES: DashboardModule = {
   status: "available",
 };
 
+const MODULE_AUDIT_OVERVIEW: DashboardModule = {
+  id: "audit-overview",
+  title: "Saúde do Sistema",
+  description: "Visualize métricas agregadas dos registros de auditoria.",
+  href: "/system-health",
+  roles: [Role.ADMIN],
+  icon: ActivitySquare,
+  status: "available",
+};
+
+const MODULE_AUDIT_LOGS: DashboardModule = {
+  id: "audit-logs",
+  title: "Registros de Auditoria",
+  description: "Investigue atividades recentes e eventos críticos registrados.",
+  href: "/logs",
+  roles: [Role.ADMIN],
+  icon: ShieldAlert,
+  status: "available",
+};
+
 export const DASHBOARD_MODULES: DashboardModule[] = [
   MODULE_USER_MANAGEMENT,
   MODULE_LAB_RESOURCES,
@@ -82,6 +112,8 @@ export const DASHBOARD_MODULES: DashboardModule[] = [
   MODULE_SOFTWARE_REQUESTS,
   MODULE_SOFTWARE,
   MODULE_SYSTEM_RULES,
+  MODULE_AUDIT_OVERVIEW,
+  MODULE_AUDIT_LOGS,
 ];
 
 export interface DashboardNavChild {
@@ -154,5 +186,11 @@ export const DASHBOARD_NAV_ITEMS: DashboardNavItem[] = [
   },
   {
     ...MODULE_SYSTEM_RULES,
+  },
+  {
+    ...MODULE_AUDIT_OVERVIEW,
+  },
+  {
+    ...MODULE_AUDIT_LOGS,
   },
 ];

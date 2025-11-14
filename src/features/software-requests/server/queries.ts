@@ -1,6 +1,7 @@
 import { Prisma, Role, SoftwareRequestStatus } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { createAuditSpan } from "@/lib/logging/audit";
 import { DEFAULT_PAGE_SIZE } from "@/features/shared/table";
 import type {
   SerializableSoftwareRequest,
@@ -121,62 +122,106 @@ export async function getSoftwareRequestsWithFilters({
   const perPage = Math.max(1, pagination.perPage);
   const skip = (page - 1) * perPage;
 
-  const [requests, total, statusGroups, laboratoryOptions] = await Promise.all([
-    prisma.softwareRequest.findMany({
-      where,
-      orderBy,
-      skip,
-      take: perPage,
-      include: {
-        laboratory: { select: { id: true, name: true } },
-        requester: { select: { id: true, name: true } },
-        reviewer: { select: { id: true, name: true } },
+  const audit = createAuditSpan(
+    { module: "software-requests", action: "getSoftwareRequestsWithFilters", actorId: actor.id, actorRole: actor.role },
+    {
+      filters: {
+        statusCount: statuses.length,
+        labCount: laboratoryIds.length,
+        hasSearch: Boolean(searchTerm),
+        hasDateRange: Boolean(createdFrom || createdTo),
       },
-    }),
-    prisma.softwareRequest.count({ where }),
-    prisma.softwareRequest.groupBy({
-      by: ["status"],
-      _count: true,
-      where: scopedWhere,
-    }),
-    prisma.laboratory.findMany({
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
-  ]);
+      sorting,
+      pagination: { page, perPage },
+    },
+    "Preparing software request query",
+    { importance: "low", logStart: false, logSuccess: false },
+  );
 
-  const statusCounts = buildStatusCounts(statusGroups);
+  try {
+    const [requests, total, statusGroups, laboratoryOptions] = await Promise.all([
+      audit.trackPrisma(
+        {
+          model: "softwareRequest",
+          action: "findMany",
+          meta: { skip, take: perPage },
+        },
+        () =>
+          prisma.softwareRequest.findMany({
+            where,
+            orderBy,
+            skip,
+            take: perPage,
+            include: {
+              laboratory: { select: { id: true, name: true } },
+              requester: { select: { id: true, name: true } },
+              reviewer: { select: { id: true, name: true } },
+            },
+          }),
+      ),
+      audit.trackPrisma(
+        { model: "softwareRequest", action: "count", meta: { hasFilter: Boolean(where) } },
+        () => prisma.softwareRequest.count({ where }),
+      ),
+      audit.trackPrisma(
+        { model: "softwareRequest", action: "groupBy", meta: { by: "status" } },
+        () =>
+          prisma.softwareRequest.groupBy({
+            by: ["status"],
+            _count: true,
+            where: scopedWhere,
+          }),
+      ),
+      audit.trackPrisma(
+        { model: "laboratory", action: "findMany", meta: { select: "id,name" } },
+        () =>
+          prisma.laboratory.findMany({
+            orderBy: { name: "asc" },
+            select: { id: true, name: true },
+          }),
+      ),
+    ]);
 
-  return {
-    total,
-    statusCounts,
-    laboratoryOptions,
-    requests: requests.map((request) => ({
-      id: request.id,
-      softwareName: request.softwareName,
-      softwareVersion: request.softwareVersion,
-      justification: request.justification,
-      status: request.status,
-      laboratory: {
-        id: request.laboratory.id,
-        name: request.laboratory.name,
-      },
-      requester: {
-        id: request.requester.id,
-        name: request.requester.name,
-      },
-      reviewer: request.reviewer
-        ? {
-            id: request.reviewer.id,
-            name: request.reviewer.name,
-          }
-        : null,
-      responseNotes: request.responseNotes,
-      createdAt: request.createdAt.toISOString(),
-      updatedAt: request.updatedAt.toISOString(),
-      reviewedAt: request.reviewedAt ? request.reviewedAt.toISOString() : null,
-    })),
-  };
+    const statusCounts = buildStatusCounts(statusGroups);
+
+    const result = {
+      total,
+      statusCounts,
+      laboratoryOptions,
+      requests: requests.map((request) => ({
+        id: request.id,
+        softwareName: request.softwareName,
+        softwareVersion: request.softwareVersion,
+        justification: request.justification,
+        status: request.status,
+        laboratory: {
+          id: request.laboratory.id,
+          name: request.laboratory.name,
+        },
+        requester: {
+          id: request.requester.id,
+          name: request.requester.name,
+        },
+        reviewer: request.reviewer
+          ? {
+              id: request.reviewer.id,
+              name: request.reviewer.name,
+            }
+          : null,
+        responseNotes: request.responseNotes,
+        createdAt: request.createdAt.toISOString(),
+        updatedAt: request.updatedAt.toISOString(),
+        reviewedAt: request.reviewedAt ? request.reviewedAt.toISOString() : null,
+      })),
+    };
+
+    audit.success({ total: result.total, returned: result.requests.length }, "Software requests fetched");
+
+    return result;
+  } catch (error) {
+    audit.failure(error, { stage: "getSoftwareRequestsWithFilters" });
+    throw error;
+  }
 }
 
 export function buildSoftwareRequestFiltersState(

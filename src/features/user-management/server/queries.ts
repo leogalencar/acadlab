@@ -1,6 +1,7 @@
 import { Prisma, Role, UserStatus } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { createAuditSpan } from "@/lib/logging/audit";
 
 import type {
   SerializableUser,
@@ -112,28 +113,60 @@ export async function getUsersWithFilters({
   const perPage = Math.max(1, pagination.perPage);
   const skip = (page - 1) * perPage;
 
-  const [total, users] = await Promise.all([
-    prisma.user.count({ where }),
-    prisma.user.findMany({
-      where,
-      orderBy,
-      skip,
-      take: perPage,
-    }),
-  ]);
+  const audit = createAuditSpan(
+    { module: "user-management", action: "getUsersWithFilters", actorRole },
+    {
+      filters: {
+        hasSearch: Boolean(searchTerm),
+        roleCount: roles.length,
+        statusCount: statuses.length,
+        hasCreatedRange: Boolean(createdFrom || createdTo),
+        hasUpdatedRange: Boolean(updatedFrom || updatedTo),
+      },
+      sorting,
+      pagination: { page, perPage },
+    },
+    "Preparing user directory query",
+    { importance: "low", logStart: false, logSuccess: false },
+  );
 
-  return {
-    total,
-    users: users.map((user) => ({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      status: user.status,
-      createdAt: user.createdAt.toISOString(),
-      updatedAt: user.updatedAt.toISOString(),
-    })),
-  };
+  try {
+    const [total, users] = await Promise.all([
+      audit.trackPrisma(
+        { model: "user", action: "count", meta: { hasFilter: conditions.length > 0 } },
+        () => prisma.user.count({ where }),
+      ),
+      audit.trackPrisma(
+        { model: "user", action: "findMany", meta: { skip, take: perPage } },
+        () =>
+          prisma.user.findMany({
+            where,
+            orderBy,
+            skip,
+            take: perPage,
+          }),
+      ),
+    ]);
+
+    const result = {
+      total,
+      users: users.map((user) => ({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        createdAt: user.createdAt.toISOString(),
+        updatedAt: user.updatedAt.toISOString(),
+      })),
+    };
+
+    audit.success({ total: result.total, returned: result.users.length }, "Users fetched");
+    return result;
+  } catch (error) {
+    audit.failure(error, { stage: "getUsersWithFilters" });
+    throw error;
+  }
 }
 
 interface BuildUserFiltersStateResult {

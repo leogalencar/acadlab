@@ -7,6 +7,7 @@ import { LaboratoriesClient } from "@/features/lab-management/components/laborat
 import { buildFiltersState, getLaboratoriesWithFilters } from "@/features/lab-management/server/queries";
 import { resolveSearchParams, type SearchParamsLike } from "@/features/shared/search-params";
 import { getAllSoftwareOptions } from "@/features/software-management/server/queries";
+import { createAuditSpan } from "@/lib/logging/audit";
 
 export const metadata: Metadata = {
   title: "Laboratórios",
@@ -19,27 +20,23 @@ export default async function LaboratoriesPage({
 }: {
   searchParams?: SearchParamsLike<LaboratoriesSearchParams>;
 }) {
+  const audit = createAuditSpan(
+    { module: "page", action: "LaboratoriesPage" },
+    { hasSearchParams: Boolean(searchParams) },
+    "Rendering /laboratories",
+    { importance: "low", logStart: false, logSuccess: false },
+  );
   const session = await auth();
 
   if (!session?.user) {
+    audit.validationFailure({ reason: "not_authenticated" });
     redirect("/login?callbackUrl=/laboratories");
   }
 
-  const resolvedParams = await resolveSearchParams<LaboratoriesSearchParams>(searchParams);
-  const {
-    filters,
-    softwareIds,
-    statuses,
-    capacity,
-    searchTerm,
-    updatedFrom,
-    updatedTo,
-    sorting,
-    pagination,
-  } = buildFiltersState(resolvedParams);
-
-  const [{ laboratories, total }, softwareCatalog] = await Promise.all([
-    getLaboratoriesWithFilters({
+  try {
+    const resolvedParams = await resolveSearchParams<LaboratoriesSearchParams>(searchParams);
+    const {
+      filters,
       softwareIds,
       statuses,
       capacity,
@@ -48,14 +45,28 @@ export default async function LaboratoriesPage({
       updatedTo,
       sorting,
       pagination,
-    }),
-    getAllSoftwareOptions(),
-  ]);
+    } = buildFiltersState(resolvedParams);
 
-  const paginationState = { ...pagination, total };
+    const [{ laboratories, total }, softwareCatalog] = await Promise.all([
+      getLaboratoriesWithFilters({
+        softwareIds,
+        statuses,
+        capacity,
+        searchTerm,
+        updatedFrom,
+        updatedTo,
+        sorting,
+        pagination,
+      }),
+      getAllSoftwareOptions(),
+    ]);
 
-  return (
-    <div className="space-y-8">
+    const paginationState = { ...pagination, total };
+
+    audit.success({ laboratories: laboratories.length, total });
+
+    return (
+      <div className="space-y-8">
       <header className="space-y-2">
         <p className="text-sm font-medium text-primary/80">Gestão de infraestrutura</p>
         <div className="space-y-1">
@@ -66,20 +77,24 @@ export default async function LaboratoriesPage({
         </div>
       </header>
 
-      <LaboratoryFilters
-        filters={filters}
-        sorting={sorting}
-        softwareOptions={softwareCatalog}
-        perPage={paginationState.perPage}
-      />
+        <LaboratoryFilters
+          filters={filters}
+          sorting={sorting}
+          softwareOptions={softwareCatalog}
+          perPage={paginationState.perPage}
+        />
 
-      <LaboratoriesClient
-        actorRole={session.user.role}
-        laboratories={laboratories}
-        softwareCatalog={softwareCatalog}
-        sorting={sorting}
-        pagination={paginationState}
-      />
-    </div>
-  );
+        <LaboratoriesClient
+          actorRole={session.user.role}
+          laboratories={laboratories}
+          softwareCatalog={softwareCatalog}
+          sorting={sorting}
+          pagination={paginationState}
+        />
+      </div>
+    );
+  } catch (error) {
+    audit.failure(error);
+    throw error;
+  }
 }
