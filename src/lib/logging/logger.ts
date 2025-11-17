@@ -109,7 +109,7 @@ function logWithPino(
     return;
   }
 
-  instance[level]();
+  instance[level](`[${level}]`);
 }
 
 function createConsoleLogger(context: LogContext = {}): BaseLogger {
