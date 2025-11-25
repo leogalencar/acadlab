@@ -65,7 +65,7 @@ model User {
   reviewedSoftwareRequests SoftwareRequest[]       @relation("ReviewerSoftwareRequests")
   notifications            Notification[]
   passwordResetTokens      PasswordResetToken[]
-  managedLaboratories      Laboratory[]            @relation("LaboratoryManagers")
+  managedLaboratories      LaboratoryManager[]
   installedSoftware        LaboratorySoftware[]    @relation("InstalledByUser")
   createdRecurrences       ReservationRecurrence[] @relation("RecurrenceCreator")
   sessions                 Session[]
@@ -82,7 +82,7 @@ model Laboratory {
   reservations         Reservation[]
   softwareAssociations LaboratorySoftware[]
   softwareRequests     SoftwareRequest[]
-  managers             User[]                  @relation("LaboratoryManagers")
+  managers             LaboratoryManager[]
   recurrences          ReservationRecurrence[]
 
   @@unique([name])
@@ -227,6 +227,7 @@ model VerificationToken {
   token      String   @unique
   expires    DateTime
 
+  @@id([identifier, token])
   @@unique([identifier, token])
 }
 
@@ -239,4 +240,16 @@ model AuditLog {
   message   String
   metadata  Json?
   createdAt DateTime @default(now())
+}
+
+model LaboratoryManager {
+  laboratoryId String @map("A")
+  managerId    String @map("B")
+
+  laboratory Laboratory @relation(fields: [laboratoryId], references: [id], onDelete: Cascade)
+  manager    User       @relation(fields: [managerId], references: [id], onDelete: Cascade)
+
+  @@id([laboratoryId, managerId])
+  @@index([managerId])
+  @@map("_LaboratoryManagers")
 }

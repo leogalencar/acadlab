@@ -1,0 +1,70 @@
+services:
+  app:
+    build:
+      context: .
+    image: acadlab:latest
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      # REQUIRED: Set AUTH_SECRET in your environment or .env file before starting the container.
+      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in your environment}
+      AUTH_URL: ${AUTH_URL:-http://localhost:3000}
+      AUTH_TRUST_HOST: ${AUTH_TRUST_HOST:-true}
+      DATABASE_URL: ${DATABASE_URL:-mysql://${DB_USER:-acadlab}:${DB_PASSWORD:-acadlab}@db:3306/${DB_NAME:-acadlab}}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-AcadLab <no-reply@acadlab.local>}
+    networks:
+      - acadlab
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+  db:
+    image: mysql:8.4
+    env_file:
+      - .env
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-acadlab}
+      MYSQL_USER: ${DB_USER:-acadlab}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-acadlab}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - acadlab
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_ROOT_PASSWORD mysqladmin ping -h localhost -u root"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # mailhog:
+  #   image: mailhog/mailhog:v1.0.1
+  #   env_file:
+  #     - .env
+  #   profiles:
+  #     - smtp
+  #   networks:
+  #     - acadlab
+  #   ports:
+  #     - "8025:8025"
+  #     - "1025:1025"
+  #   restart: unless-stopped
+
+volumes:
+  db_data:
+
+networks:
+  acadlab:
+    driver: bridge
