@@ -1,5 +1,5 @@
 -- CreateTable
-CREATE TABLE `AuditLog` (
+CREATE TABLE IF NOT EXISTS `AuditLog` (
     `id` VARCHAR(191) NOT NULL,
     `level` VARCHAR(191) NOT NULL,
     `module` VARCHAR(191) NOT NULL,
