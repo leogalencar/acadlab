@@ -137,7 +137,7 @@ export async function loginAction(
     });
 
     if (typeof redirectUrl === "string") {
-      const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+      const baseUrl = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000";
       const url = new URL(redirectUrl, baseUrl);
 
       if (url.searchParams.get("error") === "CredentialsSignin") {
