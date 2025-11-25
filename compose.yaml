@@ -10,6 +10,7 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
+      # REQUIRED: Set AUTH_SECRET in your environment or .env file before starting the container.
       AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in your environment}
       AUTH_URL: ${AUTH_URL:-http://localhost:3000}
       AUTH_TRUST_HOST: ${AUTH_TRUST_HOST:-true}
