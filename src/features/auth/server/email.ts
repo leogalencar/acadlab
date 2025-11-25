@@ -43,7 +43,7 @@ export async function sendPasswordResetEmail({
       <p>Recebemos uma solicitação para redefinir sua senha no <strong>${escapeHtml(APP_NAME)}</strong>.</p>
       <p>Use o link abaixo para criar uma nova senha:</p>
       <p style="margin: 24px 0;">
-        <a href="${resetUrl}" style="display: inline-block; background: #2563eb; color: #f8fafc; padding: 10px 16px; border-radius: 8px; text-decoration: none;">Redefinir senha</a>
+        <a href="${escapeHtml(resetUrl)}" style="display: inline-block; background: #2563eb; color: #f8fafc; padding: 10px 16px; border-radius: 8px; text-decoration: none;">Redefinir senha</a>
       </p>
       <p style="font-size: 0.95rem;">O link é válido até <strong>${escapeHtml(expiresAtLabel)}</strong>.</p>
       <p style="font-size: 0.875rem; color: #475569;">Se você não fez esta solicitação, ignore este e-mail.</p>
