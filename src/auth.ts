@@ -9,6 +9,8 @@ import { prisma } from "@/lib/prisma";
 import { Role, UserStatus } from "@prisma/client";
 import { logger } from "@/lib/logging/logger";
 
+const trustHost = (process.env.AUTH_TRUST_HOST ?? "true") !== "false";
+
 const credentialsSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1, "Password is required"),
@@ -88,6 +90,7 @@ export const {
   signIn,
   signOut,
 } = NextAuth({
+  trustHost,
   adapter: PrismaAdapter(prisma) as Adapter,
   session: {
     strategy: "jwt",
