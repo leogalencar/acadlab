@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { auth, signIn, signOut } from "@/auth";
+import { sendPasswordResetEmail } from "@/features/auth/server/email";
 import { prisma } from "@/lib/prisma";
 import { createAuditSpan } from "@/lib/logging/audit";
 import { notifyAuthEvent, notifyEntityAction } from "@/features/notifications/server/triggers";
@@ -265,10 +266,22 @@ export async function requestPasswordResetAction(
       }),
   );
 
-  const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+  audit.info({ userId: user.id, expiresAt: expiresAt.toISOString() }, "Password reset token generated");
 
-  // TODO: send email with the reset link below instead of logging it on console
-  audit.info({ userId: user.id, resetUrlTemplate: `${baseUrl}/reset-password/[token]` }, "Password reset token generated");
+  try {
+    await sendPasswordResetEmail({
+      email: user.email,
+      name: user.name,
+      token: rawToken,
+      expiresAt,
+    });
+  } catch (error) {
+    audit.failure(error, { stage: "send_reset_email" });
+    return {
+      status: "error",
+      message: "Não foi possível enviar as instruções. Tente novamente.",
+    };
+  }
 
   audit.success({ userId: user.id });
   return {
