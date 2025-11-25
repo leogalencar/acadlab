@@ -43,7 +43,7 @@ services:
     networks:
       - acadlab
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_ROOT_PASSWORD mysqladmin ping -h localhost -u root"]
       interval: 5s
       timeout: 3s
       retries: 20
