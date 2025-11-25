@@ -8,7 +8,7 @@ interface SendNewUserPasswordEmailParams {
 }
 
 const APP_NAME = process.env.APP_NAME ?? "AcadLab";
-const BASE_URL = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+const BASE_URL = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000";
 
 export async function sendNewUserPasswordEmail({
   name,
