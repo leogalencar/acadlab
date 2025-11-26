@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
@@ -37,7 +38,7 @@ type BrandingRuleValues = {
   institutionName: string;
 };
 
-export async function getSystemRules(): Promise<SerializableSystemRules> {
+async function loadSystemRules(): Promise<SerializableSystemRules> {
   const fallbackSchedule: ScheduleRuleMinutes = {
     timeZone: DEFAULT_SYSTEM_RULES.schedule.timeZone,
     periods: DEFAULT_SYSTEM_RULES.schedule.periods,
@@ -119,7 +120,11 @@ export async function getSystemRules(): Promise<SerializableSystemRules> {
   }
 }
 
-export async function getAllowedEmailDomains(): Promise<string[]> {
+export const getSystemRules = unstable_cache(loadSystemRules, ["system-rules"], {
+  tags: ["system-rules"],
+});
+
+async function loadAllowedEmailDomains(): Promise<string[]> {
   const audit = createAuditSpan(
     { module: "system-rules", action: "getAllowedEmailDomains" },
     undefined,
@@ -148,6 +153,12 @@ export async function getAllowedEmailDomains(): Promise<string[]> {
     return [...DEFAULT_SYSTEM_RULES.account.allowedEmailDomains];
   }
 }
+
+export const getAllowedEmailDomains = unstable_cache(
+  loadAllowedEmailDomains,
+  ["allowed-email-domains"],
+  { tags: ["system-rules"] },
+);
 
 function mapToSerializable(
   schedule: ScheduleRuleMinutes,

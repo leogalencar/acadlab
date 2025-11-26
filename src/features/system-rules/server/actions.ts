@@ -2,7 +2,7 @@
 
 import { Buffer } from "node:buffer";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { z } from "zod";
 import { Role } from "@prisma/client";
 
@@ -582,6 +582,7 @@ export async function updateSystemRulesAction(
     type: "update",
   });
 
+  revalidateTag("system-rules");
   revalidatePath("/system-rules");
   revalidatePath("/", "layout");
   revalidatePath("/users");
