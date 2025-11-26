@@ -1,5 +1,4 @@
-import { unstable_noStore as noStore } from "next/cache";
-import { cache } from "react";
+import { unstable_cache, unstable_noStore as noStore } from "next/cache";
 import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
@@ -123,8 +122,8 @@ async function loadSystemRules(): Promise<SerializableSystemRules> {
   }
 }
 
-export const getSystemRules = cache(async (): Promise<SerializableSystemRules> => {
-  return loadSystemRules();
+export const getSystemRules = unstable_cache(loadSystemRules, ["system-rules"], {
+  tags: ["system-rules"],
 });
 
 async function loadAllowedEmailDomains(): Promise<string[]> {
@@ -159,9 +158,11 @@ async function loadAllowedEmailDomains(): Promise<string[]> {
   }
 }
 
-export const getAllowedEmailDomains = cache(async (): Promise<string[]> => {
-  return loadAllowedEmailDomains();
-});
+export const getAllowedEmailDomains = unstable_cache(
+  loadAllowedEmailDomains,
+  ["allowed-email-domains"],
+  { tags: ["system-rules"] },
+);
 
 function mapToSerializable(
   schedule: ScheduleRuleMinutes,
