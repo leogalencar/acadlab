@@ -59,7 +59,7 @@ export default async function RootLayout({
   }) as CSSProperties;
 
   return (
-    <html lang="pt-BR" suppressHydrationWarning>
+    <html lang="pt-BR" suppressHydrationWarning style={paletteStyles}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INITIALIZATION_SCRIPT }} />
       </head>
