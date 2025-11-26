@@ -582,7 +582,7 @@ export async function updateSystemRulesAction(
     type: "update",
   });
 
-  revalidateTag("system-rules");
+  revalidateTag("system-rules", "max");
   revalidatePath("/system-rules");
   revalidatePath("/", "layout");
   revalidatePath("/users");

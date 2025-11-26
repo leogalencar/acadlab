@@ -1,4 +1,5 @@
-import { unstable_cache } from "next/cache";
+import { unstable_noStore as noStore } from "next/cache";
+import { cache } from "react";
 import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
@@ -39,6 +40,8 @@ type BrandingRuleValues = {
 };
 
 async function loadSystemRules(): Promise<SerializableSystemRules> {
+  noStore();
+
   const fallbackSchedule: ScheduleRuleMinutes = {
     timeZone: DEFAULT_SYSTEM_RULES.schedule.timeZone,
     periods: DEFAULT_SYSTEM_RULES.schedule.periods,
@@ -120,11 +123,13 @@ async function loadSystemRules(): Promise<SerializableSystemRules> {
   }
 }
 
-export const getSystemRules = unstable_cache(loadSystemRules, ["system-rules"], {
-  tags: ["system-rules"],
+export const getSystemRules = cache(async (): Promise<SerializableSystemRules> => {
+  return loadSystemRules();
 });
 
 async function loadAllowedEmailDomains(): Promise<string[]> {
+  noStore();
+
   const audit = createAuditSpan(
     { module: "system-rules", action: "getAllowedEmailDomains" },
     undefined,
@@ -154,11 +159,9 @@ async function loadAllowedEmailDomains(): Promise<string[]> {
   }
 }
 
-export const getAllowedEmailDomains = unstable_cache(
-  loadAllowedEmailDomains,
-  ["allowed-email-domains"],
-  { tags: ["system-rules"] },
-);
+export const getAllowedEmailDomains = cache(async (): Promise<string[]> => {
+  return loadAllowedEmailDomains();
+});
 
 function mapToSerializable(
   schedule: ScheduleRuleMinutes,
